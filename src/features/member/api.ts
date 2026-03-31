@@ -5,6 +5,7 @@ import {
   API_MEMBER_ACTIVITY_SEEN,
   API_MEMBER_CHANGE_PASSWORD,
   API_MEMBER_PROFILE,
+  API_MEMBER_PROFILES,
   API_MEMBER_TOTP_DISABLE,
   API_MEMBER_TOTP_SETUP,
   API_MEMBER_TOTP_VERIFY,
@@ -28,6 +29,38 @@ export type MemberProfile = {
   currentPhotoUrl?: string | null;
   familyPhotos: Array<{ photoUrl: string; sortOrder?: number }>;
 };
+
+export type MemberProfileDirectoryItem = MemberProfile & {
+  id?: number;
+  user?: {
+    memberId?: number;
+    member?: {
+      name?: string | null;
+      city?: string | null;
+      country?: string | null;
+    };
+  };
+};
+
+export type MemberProfilesResponse = {
+  profiles: MemberProfileDirectoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export function memberProfileHasContent(profile?: Partial<MemberProfile> | null) {
+  if (!profile) return false;
+  const title = typeof profile.title === 'string' ? profile.title.trim() : '';
+  const comments = typeof profile.comments === 'string' ? profile.comments.trim() : '';
+  const school = typeof profile.schoolPhotoUrl === 'string' ? profile.schoolPhotoUrl.trim() : '';
+  const current = typeof profile.currentPhotoUrl === 'string' ? profile.currentPhotoUrl.trim() : '';
+  const family = Array.isArray(profile.familyPhotos)
+    ? profile.familyPhotos.some((photo) => typeof photo?.photoUrl === 'string' && photo.photoUrl.trim().length > 0)
+    : false;
+
+  return Boolean(title || comments || school || current || family);
+}
 
 export type MemberActivityItem = {
   type: string;
@@ -54,6 +87,32 @@ export type MemberTotpSetup = {
 
 export async function getMemberProfile(accessToken: string) {
   return requestContentJson<MemberProfile>(API_MEMBER_PROFILE, {
+    method: 'GET',
+    headers: bearerOnly(accessToken),
+  });
+}
+
+export async function getMemberProfiles(
+  accessToken: string,
+  params: {
+    name?: string;
+    city?: string;
+    country?: string;
+    title?: string;
+    page?: number;
+    limit?: number;
+  } = {},
+) {
+  const searchParams = new URLSearchParams();
+  if (params.name) searchParams.set('name', params.name);
+  if (params.city) searchParams.set('city', params.city);
+  if (params.country) searchParams.set('country', params.country);
+  if (params.title) searchParams.set('title', params.title);
+  if (params.page) searchParams.set('page', String(params.page));
+  if (params.limit) searchParams.set('limit', String(params.limit));
+
+  const suffix = searchParams.toString();
+  return requestContentJson<MemberProfilesResponse>(`${API_MEMBER_PROFILES}${suffix ? `?${suffix}` : ''}`, {
     method: 'GET',
     headers: bearerOnly(accessToken),
   });

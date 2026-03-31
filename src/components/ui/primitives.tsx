@@ -1,3 +1,4 @@
+import * as Haptics from 'expo-haptics';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -58,6 +59,10 @@ export function PrimaryButton({
     <Pressable
       {...props}
       disabled={props.disabled || busy}
+      onPress={(e) => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        props.onPress?.(e);
+      }}
       style={({ pressed }) => [
         styles.button,
         {
@@ -79,6 +84,10 @@ export function GhostButton({
   return (
     <Pressable
       {...props}
+      onPress={(e) => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        props.onPress?.(e);
+      }}
       style={({ pressed }) => [
         styles.ghostButton,
         {

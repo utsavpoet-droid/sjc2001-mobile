@@ -11,6 +11,7 @@ const tabIcons: Record<string, keyof typeof Ionicons.glyphMap> = {
   'stories/index': 'chatbubbles',
   'gallery/index': 'images',
   'account/index': 'person-circle',
+  'account/profile': 'person-circle',
 };
 
 export default function MemberTabsLayout() {
@@ -61,6 +62,7 @@ export default function MemberTabsLayout() {
       <Tabs.Screen name="stories/index" options={{ title: 'Stories' }} />
       <Tabs.Screen name="gallery/index" options={{ title: 'Gallery' }} />
       <Tabs.Screen name="account/index" options={{ title: 'My Profile' }} />
+      <Tabs.Screen name="account/profile" options={{ href: null }} />
     </Tabs>
   );
 }

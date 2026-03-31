@@ -1,13 +1,27 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useGlobalSearchParams, type Href } from 'expo-router';
 import React, { useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  Linking,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 
-import { Card, Input, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
 import { BackLink } from '@/components/ui/back-link';
-import { Screen } from '@/components/ui/screen';
+import { GhostButton, Input, PrimaryButton } from '@/components/ui/primitives';
 import { RichBody } from '@/components/content/rich-body';
+import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import {
   getComments,
@@ -19,33 +33,46 @@ import {
 } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { getMemberProfiles, memberProfileHasContent } from '@/features/member/api';
 import { resolveBackendUrl } from '@/lib/api/bases';
 import { mapMemberDetailFromWire } from '@/lib/api/wire-alignment';
 
-type TaggedPhotosResponse = {
-  summary?: {
-    photoCount?: number;
-    albumCount?: number;
-  };
-  photos?: Array<{
-    photoId: number;
-    photoUrl: string;
-    albumTitle?: string | null;
-    albumId?: number;
-  }>;
-};
+const SW = Dimensions.get('window').width;
+const PHOTO_WIDTH = SW - Spacing.three * 2;
+const MAX_HERO_HEIGHT = SW * 1.1;
+type ThemeColors = (typeof Colors)[keyof typeof Colors];
 
-type ReactionsResponse = {
-  count?: number;
-  likedByMe?: boolean;
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type TaggedPhotosResponse = {
+  summary?: { photoCount?: number; albumCount?: number };
+  photos?: Array<{ photoId: number; photoUrl: string; albumTitle?: string | null; albumId?: number }>;
 };
+type ReactionsResponse = { count?: number; likedByMe?: boolean };
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatContribution(amount?: string) {
   if (!amount) return null;
   const numeric = Number(amount);
   if (!Number.isFinite(numeric)) return amount;
-  return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(numeric);
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(numeric);
 }
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('');
+}
+
+// ─── Action stat pill ─────────────────────────────────────────────────────────
 
 function ActionStat({
   icon,
@@ -60,20 +87,89 @@ function ActionStat({
   active?: boolean;
   onPress?: () => void;
 }) {
-  const backgroundColor = active ? '#F1D7CA' : 'rgba(255,255,255,0.08)';
-  const borderColor = active ? '#F1D7CA' : 'rgba(255,255,255,0.12)';
+  const bg = active ? '#F1D7CA' : 'rgba(255,255,255,0.1)';
+  const border = active ? '#F1D7CA' : 'rgba(255,255,255,0.14)';
   const iconColor = active ? '#172236' : '#E7CEC2';
-  const countColor = active ? '#172236' : '#FFF7F2';
-  const labelColor = active ? '#3A4A61' : '#CFD7E1';
+  const textColor = active ? '#172236' : '#FFF7F2';
 
   return (
-    <Pressable onPress={onPress} style={[styles.actionStat, { backgroundColor, borderColor }]}>
+    <Pressable
+      onPress={() => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        onPress?.();
+      }}
+      style={[styles.actionStat, { backgroundColor: bg, borderColor: border }]}>
       <Ionicons name={icon} size={18} color={iconColor} />
-      <Text style={[styles.actionCount, { color: countColor }]}>{count}</Text>
-      <Text style={[styles.actionLabel, { color: labelColor }]}>{label}</Text>
+      <Text style={[styles.actionCount, { color: textColor }]}>{count}</Text>
+      <Text style={[styles.actionLabel, { color: textColor, opacity: 0.75 }]}>{label}</Text>
     </Pressable>
   );
 }
+
+// ─── Contact info row ─────────────────────────────────────────────────────────
+
+function ContactRow({
+  icon,
+  label,
+  value,
+  onPress,
+  colors,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  onPress?: () => void;
+  colors: ThemeColors;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      style={({ pressed }) => [
+        styles.contactRow,
+        { borderBottomColor: colors.border },
+        onPress && { opacity: pressed ? 0.7 : 1 },
+      ]}>
+      <View style={[styles.contactIconWrap, { backgroundColor: colors.accentSoft }]}>
+        <Ionicons name={icon} size={16} color={colors.accent} />
+      </View>
+      <View style={styles.contactText}>
+        <Text style={[styles.contactLabel, { color: colors.textMuted }]}>{label}</Text>
+        <Text style={[styles.contactValue, { color: colors.text }]} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+      {onPress ? <Ionicons name="chevron-forward" size={14} color={colors.textMuted} /> : null}
+    </Pressable>
+  );
+}
+
+// ─── Comment bubble ───────────────────────────────────────────────────────────
+
+function CommentBubble({
+  author,
+  body,
+  colors,
+}: {
+  author: string;
+  body: string;
+  colors: ThemeColors;
+}) {
+  const mono = initials(author);
+  return (
+    <View style={styles.commentBubble}>
+      <View style={[styles.commentAvatar, { backgroundColor: colors.accentSoft }]}>
+        <Text style={[styles.commentAvatarText, { color: colors.accent }]}>{mono}</Text>
+      </View>
+      <View style={[styles.commentBody, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.commentAuthor, { color: colors.text }]}>{author}</Text>
+        <RichBody body={body} />
+      </View>
+    </View>
+  );
+}
+
+// ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function MemberDetailScreen() {
   const { id } = useGlobalSearchParams<{ id: string }>();
@@ -81,26 +177,39 @@ export default function MemberDetailScreen() {
   const queryClient = useQueryClient();
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
   const [commentBody, setCommentBody] = useState('');
+  const [heroHeight, setHeroHeight] = useState(PHOTO_WIDTH * 0.9);
   const commentInputRef = useRef<TextInput>(null);
 
   const memberQuery = useQuery({
     queryKey: ['member', id],
     queryFn: () => getMember(String(id)),
   });
-
   const commentsQuery = useQuery({
     queryKey: ['member-comments', id],
     queryFn: () => getComments({ entityType: 'member', entityId: String(id), page: 1, limit: 20 }),
   });
-
   const reactionsQuery = useQuery({
     queryKey: ['member-reactions', id],
-    queryFn: () => getReactions({ entityType: 'member', entityId: String(id) }, useAuthStore.getState().accessToken),
+    queryFn: () =>
+      getReactions(
+        { entityType: 'member', entityId: String(id) },
+        useAuthStore.getState().accessToken,
+      ),
   });
-
   const taggedPhotosQuery = useQuery({
     queryKey: ['member-tagged-photos', id],
     queryFn: () => getMemberTaggedPhotos(String(id)),
+  });
+
+  const memberProfileQuery = useQuery({
+    queryKey: ['member-profile-by-member', id],
+    enabled: !!id && memberQuery.isSuccess,
+    queryFn: async () => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+      const response = await getMemberProfiles(token, { page: 1, limit: 500 });
+      return response.profiles.find((item) => String(item.user?.memberId ?? '') === String(id)) ?? null;
+    },
   });
 
   const reactionMutation = useMutation({
@@ -109,31 +218,23 @@ export default function MemberDetailScreen() {
       if (!token) throw new Error('Please sign in again.');
       return postReactionToggle(token, { entityType: 'member', entityId: String(id) });
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['member-reactions', id] });
-    },
-    onError: (error) => {
-      Alert.alert('Unable to react', error instanceof Error ? error.message : 'Try again.');
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['member-reactions', id] }),
+    onError: (e) =>
+      Alert.alert('Unable to react', e instanceof Error ? e.message : 'Try again.'),
   });
 
   const commentMutation = useMutation({
     mutationFn: async () => {
       const token = await getValidAccessToken();
       if (!token) throw new Error('Please sign in again.');
-      return postComment(token, {
-        entityType: 'member',
-        entityId: String(id),
-        body: commentBody,
-      });
+      return postComment(token, { entityType: 'member', entityId: String(id), body: commentBody });
     },
     onSuccess: () => {
       setCommentBody('');
       void queryClient.invalidateQueries({ queryKey: ['member-comments', id] });
     },
-    onError: (error) => {
-      Alert.alert('Unable to comment', error instanceof Error ? error.message : 'Try again.');
-    },
+    onError: (e) =>
+      Alert.alert('Unable to comment', e instanceof Error ? e.message : 'Try again.'),
   });
 
   if (memberQuery.isLoading) {
@@ -148,50 +249,78 @@ export default function MemberDetailScreen() {
   const contribution = formatContribution(member.contributionAmount);
   const heroPhoto = member.photo_urls[0] ?? member.avatar_url ?? null;
   const comments =
-    commentsQuery.data && typeof commentsQuery.data === 'object' && 'comments' in commentsQuery.data
-      ? ((commentsQuery.data as { comments?: Array<{ id: number; body: string; author?: { name?: string } }> }).comments ?? [])
+    commentsQuery.data &&
+    typeof commentsQuery.data === 'object' &&
+    'comments' in commentsQuery.data
+      ? (
+          (
+            commentsQuery.data as {
+              comments?: Array<{ id: number; body: string; author?: { name?: string } }>;
+            }
+          ).comments ?? []
+        )
       : [];
   const reactions = (reactionsQuery.data ?? {}) as ReactionsResponse;
   const taggedPhotos = useMemo(
     () =>
-      ((((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).photos ?? [])).map((photo) => ({
-        ...photo,
-        resolvedUrl: resolveBackendUrl(photo.photoUrl ?? null),
+      (((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).photos ?? []).map((p) => ({
+        ...p,
+        resolvedUrl: resolveBackendUrl(p.photoUrl ?? null),
       })),
     [taggedPhotosQuery.data],
   );
   const taggedSummary = ((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).summary ?? {};
+  const tappableTaggedUris = taggedPhotos
+    .map((p) => p.resolvedUrl)
+    .filter((u): u is string => Boolean(u));
+  const hasExtendedProfile = memberProfileHasContent(memberProfileQuery.data);
 
   return (
     <Screen scroll>
       <BackLink label="Back to directory" />
-      <SectionTitle
-        eyebrow="Contact Card"
-        title={member.display_name || 'Member'}
-        subtitle={member.location_label || 'SJC 2001 member directory'}
-      />
 
-      <Card style={[styles.heroCard, { backgroundColor: colors.text, borderColor: colors.text }] }>
-        <View style={styles.heroTopRow}>
-          <View style={styles.heroMeta}>
-            <Text style={styles.heroKicker}>{contribution ? 'Contributor spotlight' : 'Silver Circle profile'}</Text>
+      {/* ── HERO PHOTO CARD ──────────────────────────────────────── */}
+      <View style={styles.heroCard}>
+        {/* Photo or gradient fallback */}
+        {heroPhoto ? (
+          <Image
+            source={{ uri: heroPhoto }}
+            style={[styles.heroPhoto, { height: heroHeight }]}
+            contentFit="cover"
+            onLoad={(e) => {
+              const { width: w, height: h } = e.source;
+              if (w > 0 && h > 0) {
+                setHeroHeight(Math.min(PHOTO_WIDTH * (h / w), MAX_HERO_HEIGHT));
+              }
+            }}
+          />
+        ) : (
+          <LinearGradient
+            colors={['#1C0F07', '#4A2010']}
+            style={[styles.heroPhoto, { height: PHOTO_WIDTH * 0.75, alignItems: 'center', justifyContent: 'center' }]}>
+            <Text style={styles.heroInitials}>{initials(member.display_name || '?')}</Text>
+          </LinearGradient>
+        )}
+
+        {/* Gradient overlay at photo bottom → name/location */}
+        <LinearGradient
+          colors={['transparent', 'rgba(10,5,2,0.72)', 'rgba(10,5,2,0.96)']}
+          style={styles.heroOverlay}>
+          <View style={styles.heroOverlayContent}>
+            {member.isJoining ? (
+              <View style={styles.joiningChip}>
+                <Ionicons name="sparkles" size={11} color="#F6D9CB" />
+                <Text style={styles.joiningText}>Joining the reunion</Text>
+              </View>
+            ) : null}
             <Text style={styles.heroName}>{member.display_name || 'Member'}</Text>
-            {member.location_label ? <Text style={styles.heroLocation}>{member.location_label}</Text> : null}
+            {member.location_label ? (
+              <Text style={styles.heroLocation}>{member.location_label}</Text>
+            ) : null}
           </View>
-          {member.isJoining ? (
-            <View style={styles.joiningChip}>
-              <Ionicons name="sparkles" size={12} color="#F6D9CB" />
-              <Text style={styles.joiningText}>Joining</Text>
-            </View>
-          ) : null}
-        </View>
+        </LinearGradient>
 
-        <View style={styles.heroImageWrap}>
-          {heroPhoto ? <Image source={{ uri: heroPhoto }} style={styles.heroPhoto} resizeMode="contain" /> : null}
-        </View>
-
-        {member.bioFromComments ? <Text style={styles.heroBody}>{member.bioFromComments}</Text> : null}
-
+        {/* Action stats row */}
         <View style={styles.actionsRow}>
           <ActionStat
             icon={reactions.likedByMe ? 'heart' : 'heart-outline'}
@@ -214,53 +343,143 @@ export default function MemberDetailScreen() {
             onPress={() => router.push(`/(member)/members/${id}/tagged` as Href)}
           />
         </View>
-      </Card>
-
-      <View style={styles.infoGrid}>
-        <Card style={[styles.infoCard, { backgroundColor: colors.surface }] }>
-          <Text style={[styles.metaHeading, { color: colors.text }]}>Contact</Text>
-          {member.email ? <Text style={[styles.metaText, { color: colors.textSecondary }]}>Email: {member.email}</Text> : null}
-          {member.phone ? <Text style={[styles.metaText, { color: colors.textSecondary }]}>Phone: {member.phone}</Text> : null}
-          {member.location_label ? <Text style={[styles.metaText, { color: colors.textSecondary }]}>Location: {member.location_label}</Text> : null}
-        </Card>
-        <Card style={[styles.infoCard, { backgroundColor: colors.backgroundSoft }] }>
-          <Text style={[styles.metaHeading, { color: colors.text }]}>Reunion status</Text>
-          <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-            {member.isJoining ? 'Marked as joining the reunion.' : 'No reunion attendance marked yet.'}
-          </Text>
-          {contribution ? <Text style={[styles.metaText, { color: colors.textSecondary }]}>Contribution: {contribution}</Text> : null}
-        </Card>
       </View>
 
-      {taggedPhotos.length > 0 ? (
-        <Card style={styles.previewShell}>
-          <View style={styles.previewHeader}>
-            <Text style={[styles.metaHeading, { color: colors.text }]}>Tagged photos</Text>
-            <Pressable onPress={() => router.push(`/(member)/members/${id}/tagged` as Href)}>
-              <Text style={[styles.previewLink, { color: colors.accent }]}>View all</Text>
-            </Pressable>
-          </View>
-          <View style={styles.previewRow}>
-            {taggedPhotos.slice(0, 3).map((photo) =>
-              photo.resolvedUrl ? (
-                <Image key={photo.photoId} source={{ uri: photo.resolvedUrl }} style={styles.taggedPhoto} resizeMode="cover" />
-              ) : null,
-            )}
-          </View>
-        </Card>
+      {/* ── BIO ──────────────────────────────────────────────────── */}
+      {member.bioFromComments ? (
+        <View style={[styles.bioCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Text style={[styles.bioText, { color: colors.text }]}>{member.bioFromComments}</Text>
+        </View>
       ) : null}
 
-      <View style={styles.commentStack}>
-        {comments.map((comment) => (
-          <Card key={comment.id} style={[styles.commentCard, { backgroundColor: colors.surface }] }>
-            <Text style={[styles.commentAuthor, { color: colors.text }]}>{comment.author?.name ?? 'Member'}</Text>
-            <RichBody body={comment.body} />
-          </Card>
-        ))}
+      {hasExtendedProfile ? (
+        <Pressable
+          onPress={() => router.push(`/(member)/profile?memberId=${id}` as Href)}
+          style={[styles.profilePreviewLink, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View>
+            <Text style={[styles.profilePreviewEyebrow, { color: colors.textMuted }]}>Extended profile</Text>
+            <Text style={[styles.profilePreviewTitle, { color: colors.text }]}>View profile</Text>
+          </View>
+          <Ionicons name="arrow-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+      ) : null}
+
+      {/* ── CONTACT INFO ─────────────────────────────────────────── */}
+      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.infoHeading, { color: colors.text }]}>Contact</Text>
+        {member.email ? (
+          <ContactRow
+            icon="mail-outline"
+            label="Email"
+            value={member.email}
+            onPress={() => void Linking.openURL(`mailto:${member.email}`)}
+            colors={colors}
+          />
+        ) : null}
+        {member.phone ? (
+          <ContactRow
+            icon="call-outline"
+            label="Phone"
+            value={member.phone}
+            onPress={() => void Linking.openURL(`tel:${member.phone}`)}
+            colors={colors}
+          />
+        ) : null}
+        {member.location_label ? (
+          <ContactRow
+            icon="location-outline"
+            label="Location"
+            value={member.location_label}
+            colors={colors}
+          />
+        ) : null}
+        {!member.email && !member.phone && !member.location_label ? (
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>No contact details listed.</Text>
+        ) : null}
       </View>
 
-      <Card style={[styles.commentComposer, { backgroundColor: colors.backgroundSoft }] }>
-        <Text style={[styles.metaHeading, { color: colors.text }]}>Join the conversation</Text>
+      {/* ── REUNION STATUS ────────────────────────────────────────── */}
+      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.infoHeading, { color: colors.text }]}>Reunion</Text>
+        <View style={styles.reunionRow}>
+          <View
+            style={[
+              styles.reunionDot,
+              { backgroundColor: member.isJoining ? colors.success : colors.border },
+            ]}
+          />
+          <Text style={[styles.reunionStatus, { color: colors.textSecondary }]}>
+            {member.isJoining ? 'Attending the Silver Jubilee' : 'Attendance not confirmed yet'}
+          </Text>
+        </View>
+        {contribution ? (
+          <View style={styles.reunionRow}>
+            <View style={[styles.reunionDot, { backgroundColor: colors.accent }]} />
+            <Text style={[styles.reunionStatus, { color: colors.textSecondary }]}>
+              Contributed {contribution}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      {/* ── TAGGED PHOTOS ─────────────────────────────────────────── */}
+      {taggedPhotos.length > 0 ? (
+        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.taggedHeader}>
+            <Text style={[styles.infoHeading, { color: colors.text }]}>Tagged photos</Text>
+            <Pressable
+              onPress={() => router.push(`/(member)/members/${id}/tagged` as Href)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+              <Text style={[styles.viewAllLink, { color: colors.accent }]}>
+                View all ({taggedSummary.photoCount ?? taggedPhotos.length})
+              </Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.taggedScroll}>
+            {taggedPhotos.map((photo, index) =>
+              photo.resolvedUrl ? (
+                <Pressable
+                  key={photo.photoId}
+                  onPress={() => {
+                    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    router.push(
+                      `/(member)/photo-preview?uris=${encodeURIComponent(JSON.stringify(tappableTaggedUris))}&startIndex=${index}` as never,
+                    );
+                  }}
+                  style={({ pressed }) => [styles.taggedThumb, { opacity: pressed ? 0.85 : 1 }]}>
+                  <Image
+                    source={{ uri: photo.resolvedUrl }}
+                    style={styles.taggedThumbImg}
+                    contentFit="cover"
+                    recyclingKey={photo.resolvedUrl}
+                  />
+                </Pressable>
+              ) : null,
+            )}
+          </ScrollView>
+        </View>
+      ) : null}
+
+      {/* ── COMMENTS ─────────────────────────────────────────────── */}
+      {comments.length > 0 ? (
+        <View style={styles.commentStack}>
+          <Text style={[styles.infoHeading, { color: colors.text }]}>
+            {comments.length === 1 ? '1 comment' : `${comments.length} comments`}
+          </Text>
+          {comments.map((c) => (
+            <CommentBubble
+              key={c.id}
+              author={c.author?.name ?? 'Member'}
+              body={c.body}
+              colors={colors}
+            />
+          ))}
+        </View>
+      ) : null}
+
+      {/* ── COMMENT COMPOSER ─────────────────────────────────────── */}
+      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.infoHeading, { color: colors.text }]}>Leave a note</Text>
         <Input
           ref={commentInputRef}
           value={commentBody}
@@ -272,89 +491,85 @@ export default function MemberDetailScreen() {
         <PrimaryButton busy={commentMutation.isPending} onPress={() => commentMutation.mutate()}>
           Post comment
         </PrimaryButton>
-      </Card>
+      </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  // Hero
   heroCard: {
-    borderRadius: 34,
-    gap: Spacing.three,
+    borderRadius: 28,
+    overflow: 'hidden',
+    backgroundColor: '#0D0A08',
   },
-  heroTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: Spacing.two,
+  heroPhoto: {
+    width: '100%',
+    borderRadius: 0,
   },
-  heroMeta: {
-    flex: 1,
+  heroInitials: {
+    color: '#EAD4C7',
+    fontFamily: Fonts.rounded,
+    fontSize: 64,
+    opacity: 0.4,
+  },
+  heroOverlay: {
+    position: 'absolute',
+    bottom: 72, // leave room for action stats
+    left: 0,
+    right: 0,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.six,
+    paddingBottom: Spacing.three,
+  },
+  heroOverlayContent: {
     gap: Spacing.one,
   },
-  heroKicker: {
-    color: '#EED8CE',
-    fontFamily: Fonts.mono,
+  joiningChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    marginBottom: Spacing.one,
+  },
+  joiningText: {
+    color: '#F6D9CB',
+    fontFamily: Fonts.rounded,
     fontSize: 11,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
   },
   heroName: {
     color: '#FFF7F1',
     fontFamily: Fonts.rounded,
     fontSize: 32,
     lineHeight: 38,
+    letterSpacing: -0.4,
   },
   heroLocation: {
-    color: '#D4DCE5',
+    color: '#C8D4E0',
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 20,
   },
-  joiningChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  joiningText: {
-    color: '#F6D9CB',
-    fontFamily: Fonts.rounded,
-    fontSize: 12,
-  },
-  heroImageWrap: {
-    height: 240,
-    borderRadius: 28,
-    overflow: 'hidden',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  heroBody: {
-    color: '#E9EEF4',
-    fontFamily: Fonts.sans,
-    fontSize: 15,
-    lineHeight: 23,
-  },
   actionsRow: {
     flexDirection: 'row',
     gap: Spacing.two,
-    flexWrap: 'wrap',
+    padding: Spacing.three,
+    backgroundColor: 'rgba(10,5,2,0.96)',
   },
   actionStat: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 16,
     borderWidth: 1,
   },
   actionCount: {
@@ -363,59 +578,166 @@ const styles = StyleSheet.create({
   },
   actionLabel: {
     fontFamily: Fonts.sans,
-    fontSize: 13,
+    fontSize: 12,
   },
-  infoGrid: {
+
+  // Bio
+  bioCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: Spacing.four,
+  },
+  profilePreviewLink: {
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: Spacing.four,
+    paddingVertical: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     gap: Spacing.three,
   },
-  infoCard: {
-    borderRadius: 28,
+  profilePreviewEyebrow: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: 4,
   },
-  metaHeading: {
+  profilePreviewTitle: {
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
+  },
+  bioText: {
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    lineHeight: 24,
+  },
+
+  // Info cards
+  infoCard: {
+    borderRadius: 24,
+    borderWidth: 1,
+    padding: Spacing.four,
+    gap: Spacing.two,
+  },
+  infoHeading: {
     fontFamily: Fonts.rounded,
     fontSize: 20,
   },
-  metaText: {
+  emptyText: {
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+  },
+
+  // Contact rows
+  contactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingVertical: Spacing.two,
+    borderBottomWidth: 1,
+  },
+  contactIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contactText: {
+    flex: 1,
+    gap: 2,
+  },
+  contactLabel: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  contactValue: {
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+  },
+
+  // Reunion
+  reunionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  reunionDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  reunionStatus: {
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 22,
+    flex: 1,
   },
-  previewShell: {
-    borderRadius: 28,
-  },
-  previewHeader: {
+
+  // Tagged photos
+  taggedHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  previewLink: {
+  viewAllLink: {
     fontFamily: Fonts.rounded,
     fontSize: 14,
   },
-  previewRow: {
-    flexDirection: 'row',
+  taggedScroll: {
+    marginHorizontal: -Spacing.four,
+    paddingHorizontal: Spacing.four,
+  },
+  taggedThumb: {
+    marginRight: Spacing.two,
+  },
+  taggedThumbImg: {
+    width: 130,
+    height: 130,
+    borderRadius: 16,
+  },
+
+  // Comments
+  commentStack: {
     gap: Spacing.two,
   },
-  taggedPhoto: {
+  commentBubble: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    alignItems: 'flex-start',
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  commentAvatarText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  commentBody: {
     flex: 1,
-    height: 110,
-    borderRadius: 20,
-  },
-  commentStack: {
-    gap: Spacing.three,
-  },
-  commentCard: {
-    borderRadius: 24,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: Spacing.three,
+    gap: Spacing.one,
   },
   commentAuthor: {
     fontFamily: Fonts.rounded,
-    fontSize: 16,
+    fontSize: 14,
   },
-  commentComposer: {
-    borderRadius: 28,
-  },
+
+  // Composer
   commentInput: {
-    minHeight: 120,
+    minHeight: 110,
     textAlignVertical: 'top',
     paddingTop: Spacing.three,
   },

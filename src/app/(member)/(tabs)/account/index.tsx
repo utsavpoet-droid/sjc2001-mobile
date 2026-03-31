@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
-import { Link, router, type Href } from 'expo-router';
+import { Link, Redirect, router, type Href } from 'expo-router';
 import React from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -9,7 +9,7 @@ import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getMobileMe } from '@/features/auth/api/auth-api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
-import { getMemberActivity, getMemberProfile } from '@/features/member/api';
+import { getMemberActivity, getMemberProfile, memberProfileHasContent } from '@/features/member/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
 
@@ -72,6 +72,11 @@ export default function AccountScreen() {
   const schoolPhoto = resolveBackendUrl(memberProfile?.schoolPhotoUrl ?? null);
   const currentPhoto = resolveBackendUrl(memberProfile?.currentPhotoUrl ?? null);
   const heroPhoto = currentPhoto ?? schoolPhoto ?? profile?.avatarUrl ?? null;
+  const hasCreatedProfile = memberProfileHasContent(memberProfile);
+
+  if (!profileQuery.isLoading && hasCreatedProfile) {
+    return <Redirect href={'/(member)/(tabs)/account/profile' as Href} />;
+  }
 
   return (
     <Screen scroll>
@@ -125,20 +130,9 @@ export default function AccountScreen() {
           </View>
         </View>
 
-        <View style={styles.actionRow}>
-          <Link href={'/(member)/profile' as Href} asChild>
-            <Pressable>
-              {({ pressed }) => (
-                <View style={[styles.secondaryAction, { backgroundColor: 'rgba(255,255,255,0.1)', borderColor: 'rgba(255,255,255,0.16)', opacity: pressed ? 0.84 : 1 }]}>
-                  <Text style={styles.secondaryActionText}>View Profile</Text>
-                </View>
-              )}
-            </Pressable>
-          </Link>
-          <Link href={'/(member)/profile/edit' as Href} asChild>
-            <PrimaryButton>Edit Profile</PrimaryButton>
-          </Link>
-        </View>
+        <Link href={'/(member)/profile/edit' as Href} asChild>
+          <PrimaryButton>Create My Profile</PrimaryButton>
+        </Link>
       </Card>
 
       <View style={styles.grid}>

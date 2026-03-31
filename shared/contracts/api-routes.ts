@@ -22,6 +22,7 @@ export const API_UPLOAD = '/upload' as const;
 export const API_POLLS = '/polls' as const;
 export const API_SILVER_JUBILEE = '/silver-jubilee' as const;
 export const API_MEMBER_PROFILE = '/member-profile' as const;
+export const API_MEMBER_PROFILES = '/member-profiles' as const;
 export const API_MEMBER_ACTIVITY = '/member/activity' as const;
 export const API_MEMBER_ACTIVITY_SEEN = '/member/activity/seen' as const;
 export const API_MEMBER_CHANGE_PASSWORD = '/member/change-password' as const;

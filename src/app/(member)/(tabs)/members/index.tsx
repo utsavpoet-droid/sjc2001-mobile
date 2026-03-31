@@ -439,10 +439,6 @@ export default function MembersScreen() {
                   </View>
 
                   <View style={styles.footerRow}>
-                    <Pressable onPress={(event) => openProfile(member.id, event)} style={[styles.profileLinkWrap, { backgroundColor: contributor ? 'rgba(255,255,255,0.08)' : colors.backgroundSoft }] }>
-                      <Text style={[styles.profileLink, { color: contributor ? '#FFF7F1' : colors.text }]}>Check Profile</Text>
-                      <Ionicons name="arrow-forward" size={14} color={contributor ? '#F6D8CA' : colors.textMuted} />
-                    </Pressable>
                     <View style={styles.statRow}>
                       <MemberStat
                         icon={engagement.likedByMe ? 'heart' : 'heart-outline'}
@@ -477,7 +473,7 @@ const styles = StyleSheet.create({
   },
   overviewRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'flex-start',
     gap: Spacing.three,
   },

@@ -19,7 +19,15 @@ export default function MemberLayout() {
       <Stack.Screen name="stories/[id]" />
       <Stack.Screen name="stories/create" />
       <Stack.Screen name="gallery/[id]" />
+      <Stack.Screen
+        name="gallery/photo"
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
       <Stack.Screen name="profile/index" />
+      <Stack.Screen
+        name="photo-preview"
+        options={{ presentation: 'fullScreenModal', animation: 'fade' }}
+      />
       <Stack.Screen name="profile/edit" />
       <Stack.Screen name="settings/index" />
       <Stack.Screen name="activity/index" />

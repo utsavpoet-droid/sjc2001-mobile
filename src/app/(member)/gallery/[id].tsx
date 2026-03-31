@@ -1,7 +1,8 @@
-import { useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import React from 'react';
-import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, SectionTitle } from '@/components/ui/primitives';
 import { BackLink } from '@/components/ui/back-link';
@@ -19,6 +20,7 @@ type AlbumDetail = {
 
 export default function GalleryDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const colors = Colors[resolveThemeMode(useColorScheme())];
 
   const query = useQuery({
@@ -46,18 +48,29 @@ export default function GalleryDetailScreen() {
       />
 
       <View style={styles.grid}>
-        {(album.photos ?? []).map((photo) => {
+        {(album.photos ?? []).map((photo, index) => {
           const uri = resolveBackendUrl(photo.photoUrl ?? null);
           return (
-            <Card key={String(photo.id)} style={[styles.photoCard, { backgroundColor: colors.surface }]}>
-              {uri ? (
-                <View style={[styles.photoFrame, { backgroundColor: colors.backgroundSoft }]}>
-                  <Image source={{ uri }} style={styles.photo} resizeMode="contain" />
-                </View>
-              ) : (
-                <Text style={[styles.photoFallback, { color: colors.textSecondary }]}>Photo unavailable</Text>
-              )}
-            </Card>
+            <Pressable
+              key={String(photo.id)}
+              onPress={() => {
+                if (!uri) return;
+                void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                router.push(
+                  `/(member)/gallery/photo?albumId=${id}&startIndex=${index}` as never,
+                );
+              }}
+              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+              <Card style={[styles.photoCard, { backgroundColor: colors.surface }]}>
+                {uri ? (
+                  <View style={[styles.photoFrame, { backgroundColor: colors.backgroundSoft }]}>
+                    <Image source={{ uri }} style={styles.photo} resizeMode="contain" />
+                  </View>
+                ) : (
+                  <Text style={[styles.photoFallback, { color: colors.textSecondary }]}>Photo unavailable</Text>
+                )}
+              </Card>
+            </Pressable>
           );
         })}
         {(album.photos ?? []).length === 0 ? (
