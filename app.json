@@ -49,6 +49,12 @@
       "typedRoutes": true,
       "reactCompiler": true
     },
-    "owner": "usrivastava0920s-organization"
+    "owner": "usrivastava0920s-organization",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "c6428a1d-216a-43e4-a874-7c5028edb863"
+      }
+    }
   }
 }
