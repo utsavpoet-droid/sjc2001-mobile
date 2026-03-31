@@ -1,40 +1,58 @@
-/**
- * Below are the colors that are used in the app. The colors are defined in the light and dark mode.
- * There are many other ways to style your app. For example, [Nativewind](https://www.nativewind.dev/), [Tamagui](https://tamagui.dev/), [unistyles](https://reactnativeunistyles.vercel.app), etc.
- */
-
 import '@/global.css';
 
 import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#182437',
+    background: '#F4EFE8',
+    backgroundSoft: '#FBF7F2',
+    backgroundElement: '#E8DED0',
+    backgroundSelected: '#E5D0BE',
+    surface: '#FFFDFC',
+    surfaceMuted: '#F2EEE7',
+    textSecondary: '#5C677A',
+    textMuted: '#8F97A3',
+    border: '#DCCEBE',
+    accent: '#C96A4A',
+    accentSoft: '#F4D8CF',
+    success: '#277A6A',
+    danger: '#C25850',
+    scrim: 'rgba(16, 22, 34, 0.46)',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F5EFE7',
+    background: '#10151D',
+    backgroundSoft: '#171E28',
+    backgroundElement: '#1E2935',
+    backgroundSelected: '#273545',
+    surface: '#18202B',
+    surfaceMuted: '#212B38',
+    textSecondary: '#C2CBD6',
+    textMuted: '#8A97A8',
+    border: '#2E3B4F',
+    accent: '#F08B63',
+    accentSoft: '#4F3128',
+    success: '#5FBEAC',
+    danger: '#FF9A8F',
+    scrim: 'rgba(6, 10, 16, 0.66)',
   },
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
+export type ThemeMode = keyof typeof Colors;
+
+export function resolveThemeMode(
+  scheme: 'light' | 'dark' | 'unspecified' | null | undefined,
+): ThemeMode {
+  return scheme === 'dark' ? 'dark' : 'light';
+}
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
     sans: 'system-ui',
-    /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
     rounded: 'ui-rounded',
-    /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
