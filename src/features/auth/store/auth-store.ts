@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { postMobileLogin, postMobileLogout, postMobileRefresh } from '@/features/auth/api/auth-api';
 import { getBiometricInfo, promptBiometric } from '@/lib/auth/biometrics';
 import { ApiError } from '@/lib/api/errors';
+import { unregisterDeviceForPush } from '@/lib/notifications/push';
 
 import {
   isTotpChallengeData,
@@ -280,9 +281,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
-    const { refreshToken } = get();
+    const { refreshToken, accessToken } = get();
     set({ busy: true, errorMessage: null });
     try {
+      await unregisterDeviceForPush(accessToken);
       if (refreshToken) {
         await postMobileLogout({ refreshToken });
       }

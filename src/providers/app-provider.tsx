@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAuthStore } from '@/features/auth/store/auth-store';
+import { prepareNotificationRuntime, registerDeviceForPush, subscribeToNotificationResponses } from '@/lib/notifications/push';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -18,11 +19,18 @@ const queryClient = new QueryClient({
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((state) => state.hydrate);
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const user = useAuthStore((state) => state.user);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     hydrate().finally(() => setReady(true));
   }, [hydrate]);
+
+  useEffect(() => {
+    void prepareNotificationRuntime();
+    const sub = subscribeToNotificationResponses();
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -32,6 +40,21 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     });
     return () => sub.remove();
   }, [getValidAccessToken]);
+
+  useEffect(() => {
+    if (!ready || !user) return;
+
+    let cancelled = false;
+    void (async () => {
+      const token = await getValidAccessToken();
+      if (!token || cancelled) return;
+      await registerDeviceForPush(token);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [getValidAccessToken, ready, user]);
 
   if (!ready) {
     return null;

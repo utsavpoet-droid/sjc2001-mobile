@@ -53,6 +53,7 @@
           "faceIDPermission": "Use Face ID to unlock Silver Circle quickly and securely."
         }
       ],
+      "expo-notifications",
       "expo-secure-store",
       "expo-sharing"
     ],
