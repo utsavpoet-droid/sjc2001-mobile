@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((state) => state.hydrate);
-  const refreshSession = useAuthStore((state) => state.refreshSession);
+  const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
@@ -27,11 +27,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void refreshSession();
+        void getValidAccessToken();
       }
     });
     return () => sub.remove();
-  }, [refreshSession]);
+  }, [getValidAccessToken]);
 
   if (!ready) {
     return null;

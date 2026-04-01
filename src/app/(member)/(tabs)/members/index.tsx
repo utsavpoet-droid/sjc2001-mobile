@@ -76,28 +76,28 @@ function MemberStat({
       ? '#F1D7CA'
       : colors.accentSoft
     : inverted
-      ? 'rgba(255,255,255,0.08)'
+      ? 'rgba(255,255,255,0.10)'
       : colors.surface;
   const borderColor = active
     ? inverted
       ? '#F1D7CA'
       : colors.accent
     : inverted
-      ? 'rgba(255,255,255,0.12)'
+      ? 'rgba(255,255,255,0.16)'
       : colors.border;
   const iconColor = active
     ? inverted
       ? '#172236'
       : colors.accent
     : inverted
-      ? '#E7CEC2'
+      ? '#F3CEBC'
       : colors.textSecondary;
   const textColor = active
     ? inverted
       ? '#172236'
       : colors.accent
     : inverted
-      ? '#FFF7F2'
+      ? '#FFF4ED'
       : colors.text;
 
   return (
@@ -268,13 +268,13 @@ export default function MembersScreen() {
         subtitle="From classmates to conversations — like, comment, reconnect."
       />
 
-      <Card style={[styles.overviewCard, { backgroundColor: colors.text, borderColor: colors.text }] }>
+      <Card style={[styles.overviewCard, styles.deepSurfaceCard]}>
         <View style={styles.overviewRow}>
           <View style={styles.overviewCopy}>
             <Text style={styles.overviewKicker}>Live directory</Text>
             <Text style={styles.overviewTitle}>From classmates to conversations — like, comment, reconnect.</Text>
           </View>
-          <View style={[styles.overviewBadge, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+          <View style={[styles.overviewBadge, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
             <Ionicons name="sparkles" size={14} color="#F4D6C9" />
           </View>
         </View>
@@ -426,8 +426,8 @@ export default function MembersScreen() {
                     styles.memberCard,
                     contributor
                       ? {
-                          backgroundColor: colors.text,
-                          borderColor: colors.text,
+                          backgroundColor: '#0F1B2D',
+                          borderColor: '#0F1B2D',
                           shadowColor: colors.accent,
                           shadowOpacity: 0.18,
                           shadowRadius: 20,
@@ -498,6 +498,10 @@ export default function MembersScreen() {
 }
 
 const styles = StyleSheet.create({
+  deepSurfaceCard: {
+    backgroundColor: '#0F1B2D',
+    borderColor: '#0F1B2D',
+  },
   headerStack: {
     gap: Spacing.three,
   },

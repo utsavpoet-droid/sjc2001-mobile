@@ -7,6 +7,7 @@ import { Card, GhostButton, Input, PrimaryButton, SectionTitle } from '@/compone
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { getContentApiBase, joinBasePath } from '@/lib/api/bases';
+import { getBiometricInfo } from '@/lib/auth/biometrics';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 const silverCircleLogo = require('../../../assets/branding/silver-circle-25.png');
@@ -17,6 +18,11 @@ export default function SignInScreen() {
   const busy = useAuthStore((state) => state.busy);
   const errorMessage = useAuthStore((state) => state.errorMessage);
   const clearError = useAuthStore((state) => state.clearError);
+  const biometricEnabled = useAuthStore((state) => state.biometricEnabled);
+  const biometricLabel = useAuthStore((state) => state.biometricLabel);
+  const refreshToken = useAuthStore((state) => state.refreshToken);
+  const unlockWithBiometrics = useAuthStore((state) => state.unlockWithBiometrics);
+  const setBiometricEnabled = useAuthStore((state) => state.setBiometricEnabled);
 
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -39,6 +45,29 @@ export default function SignInScreen() {
 
       if (result.kind === 'totp_required') {
         Alert.alert('Two-factor required', 'This account needs a TOTP code. That screen is the next member flow to wire.');
+        return;
+      }
+
+      const biometricInfo = await getBiometricInfo();
+      if (biometricInfo.available && !biometricEnabled) {
+        Alert.alert(
+          `Enable ${biometricInfo.label}?`,
+          `Use ${biometricInfo.label} to unlock your saved Silver Circle session after your first password sign-in.`,
+          [
+            {
+              text: 'Not now',
+              style: 'cancel',
+              onPress: () => router.replace('/(member)/(tabs)/home' as never),
+            },
+            {
+              text: 'Enable',
+              onPress: () => {
+                void setBiometricEnabled(true);
+                router.replace('/(member)/(tabs)/home' as never);
+              },
+            },
+          ],
+        );
         return;
       }
 
@@ -136,6 +165,21 @@ export default function SignInScreen() {
             onPress={() => void handleSignIn()}>
             Sign In
           </PrimaryButton>
+
+          {biometricEnabled && refreshToken ? (
+            <GhostButton
+              onPress={async () => {
+                clearError();
+                const token = await unlockWithBiometrics();
+                if (token) {
+                  router.replace('/(member)/(tabs)/home' as never);
+                  return;
+                }
+                Alert.alert('Unable to unlock', `Use ${biometricLabel ?? 'your biometric'} or sign in with your password.`);
+              }}>
+              Continue with {biometricLabel ?? 'Face ID'}
+            </GhostButton>
+          ) : null}
 
           <GhostButton onPress={() => setShowAccessRequest((value) => !value)}>
             Forgotten password or need access? Click here.

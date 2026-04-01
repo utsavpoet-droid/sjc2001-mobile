@@ -86,9 +86,9 @@ export default function StoriesScreen() {
       <Link href={'/(member)/stories/create' as Href} asChild>
         <Pressable>
           {({ pressed }) => (
-            <Card style={[styles.composeCard, { backgroundColor: colors.text, borderColor: colors.text, transform: [{ scale: pressed ? 0.988 : 1 }] }]}>
+            <Card style={[styles.composeCard, styles.composeCardSurface, { transform: [{ scale: pressed ? 0.988 : 1 }] }]}>
               <View style={styles.composeRow}>
-                <View style={[styles.composeIcon, { backgroundColor: 'rgba(255,255,255,0.08)' }]}>
+                <View style={[styles.composeIcon, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
                   <Ionicons name="create-outline" size={18} color="#F7E3D8" />
                 </View>
                 <View style={styles.composeCopy}>
@@ -157,6 +157,10 @@ export default function StoriesScreen() {
 const styles = StyleSheet.create({
   composeCard: {
     borderRadius: 30,
+  },
+  composeCardSurface: {
+    backgroundColor: '#111B2E',
+    borderColor: '#111B2E',
   },
   composeRow: {
     flexDirection: 'row',
