@@ -1,13 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
-import { Link, type Href } from 'expo-router';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { router, type Href } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ImageBackground, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, SectionTitle } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
-import { getBulkEngagement, getGallery } from '@/features/content/api';
+import { getBulkEngagement, getGallery, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
@@ -19,19 +19,36 @@ type AlbumWire = {
   photos?: Array<{ photoUrl?: string }>;
 };
 
-function AlbumStat({ icon, count }: { icon: keyof typeof Ionicons.glyphMap; count: number }) {
+function AlbumStat({
+  icon,
+  count,
+  active,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  count: number;
+  active?: boolean;
+  onPress?: () => void;
+}) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   return (
-    <View style={[styles.countPill, { backgroundColor: 'rgba(8, 8, 8, 0.64)' }]}>
-      <Ionicons name={icon} size={12} color={count > 0 ? '#F6D9CB' : '#FFFFFF'} />
+    <Pressable
+      onPress={(event) => {
+        event.stopPropagation();
+        onPress?.();
+      }}
+      style={[styles.countPill, { backgroundColor: active ? 'rgba(246,217,203,0.92)' : 'rgba(8, 8, 8, 0.64)' }]}>
+      <Ionicons name={icon} size={12} color={active ? '#172236' : count > 0 ? '#F6D9CB' : '#FFFFFF'} />
       <Text style={styles.countText}>{count}</Text>
-    </View>
+    </Pressable>
   );
 }
 
 export default function GalleryScreen() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const accessToken = useAuthStore((state) => state.accessToken);
+  const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: ['gallery'],
     queryFn: () => getGallery(),
@@ -42,6 +59,19 @@ export default function GalleryScreen() {
     queryKey: ['gallery-album-engagement', albums.map((album) => album.id).join(','), accessToken],
     queryFn: () => getBulkEngagement('gallery_album', albums.map((album) => String(album.id ?? '')).filter(Boolean), accessToken),
     enabled: albums.length > 0,
+  });
+  const reactionMutation = useMutation({
+    mutationFn: async (albumId: string) => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+      return postReactionToggle(token, { entityType: 'gallery_album', entityId: albumId });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['gallery-album-engagement'] });
+    },
+    onError: (error) => {
+      Alert.alert('Unable to react', error instanceof Error ? error.message : 'Try again.');
+    },
   });
 
   return (
@@ -59,8 +89,7 @@ export default function GalleryScreen() {
           const cover = resolveBackendUrl(album.photos?.[0]?.photoUrl ?? null);
           const photoCount = album.photos?.length ?? 0;
           return (
-            <Link key={String(album.id)} href={`/(member)/gallery/${album.id}` as Href} asChild>
-              <Pressable>
+            <Pressable key={String(album.id)} onPress={() => router.push(`/(member)/gallery/${album.id}` as Href)}>
                 {({ pressed }) => (
                   <Card style={[styles.albumCard, { transform: [{ scale: pressed ? 0.988 : 1 }] }]}>
                     <ImageBackground
@@ -71,8 +100,18 @@ export default function GalleryScreen() {
                       <View style={styles.overlayTopRow}>
                         <AlbumStat icon="images" count={photoCount} />
                         <View style={styles.overlayActions}>
-                          <AlbumStat icon="heart" count={engagementQuery.data?.[Number(album.id ?? 0)]?.reactionCount ?? 0} />
-                          <AlbumStat icon="chatbubble-ellipses" count={engagementQuery.data?.[Number(album.id ?? 0)]?.commentCount ?? 0} />
+                          <AlbumStat
+                            icon={(engagementQuery.data?.[Number(album.id ?? 0)]?.likedByMe ? 'heart' : 'heart-outline') as keyof typeof Ionicons.glyphMap}
+                            count={engagementQuery.data?.[Number(album.id ?? 0)]?.reactionCount ?? 0}
+                            active={Boolean(engagementQuery.data?.[Number(album.id ?? 0)]?.likedByMe)}
+                            onPress={() => reactionMutation.mutate(String(album.id ?? ''))}
+                          />
+                          <AlbumStat
+                            icon="chatbubble-ellipses-outline"
+                            count={engagementQuery.data?.[Number(album.id ?? 0)]?.commentCount ?? 0}
+                            active={(engagementQuery.data?.[Number(album.id ?? 0)]?.commentCount ?? 0) > 0}
+                            onPress={() => router.push(`/(member)/gallery/${album.id}?focusComments=1` as Href)}
+                          />
                           <View style={[styles.countPill, { backgroundColor: 'rgba(8, 8, 8, 0.64)' }]}>
                             <Ionicons name="expand" size={12} color="#FFFFFF" />
                           </View>
@@ -89,8 +128,7 @@ export default function GalleryScreen() {
                     </ImageBackground>
                   </Card>
                 )}
-              </Pressable>
-            </Link>
+            </Pressable>
           );
         })}
         {!query.isLoading && albums.length === 0 ? (

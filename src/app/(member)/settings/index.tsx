@@ -18,7 +18,9 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 export default function SettingsScreen() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
+  const busy = useAuthStore((state) => state.busy);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -102,6 +104,19 @@ export default function SettingsScreen() {
     [confirmPassword, currentPassword, newPassword],
   );
 
+  const handleLogout = () => {
+    Alert.alert('Sign out?', 'You can sign back in any time with your member credentials.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign out',
+        style: 'destructive',
+        onPress: () => {
+          void logout();
+        },
+      },
+    ]);
+  };
+
   return (
     <Screen scroll>
       <BackLink label="Back to account" />
@@ -158,6 +173,16 @@ export default function SettingsScreen() {
             </PrimaryButton>
           </View>
         ) : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={[styles.heading, { color: colors.text }]}>Session</Text>
+        <Text style={[styles.caption, { color: colors.textSecondary }]}>
+          Sign out of Silver Circle on this device when you are done.
+        </Text>
+        <PrimaryButton busy={busy} onPress={handleLogout}>
+          Sign out
+        </PrimaryButton>
       </Card>
     </Screen>
   );

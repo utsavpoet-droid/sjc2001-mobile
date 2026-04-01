@@ -1,9 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
@@ -12,6 +12,7 @@ import {
   StatusBar,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ViewToken,
 } from 'react-native';
@@ -26,14 +27,21 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { postReactionToggle, getGalleryAlbum } from '@/features/content/api';
+import { GifPicker } from '@/components/content/gif-picker';
+import { Input, PrimaryButton } from '@/components/ui/primitives';
+import { RichBody } from '@/components/content/rich-body';
+import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
+import { getBulkEngagement, getComments, getGalleryAlbum, getReactions, postComment, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSharePhoto } from '@/hooks/use-share-photo';
 import { resolveBackendUrl } from '@/lib/api/bases';
+import { serializeComposerBody } from '@/lib/content/gif-tokens';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
 type Photo = { id?: number; photoUrl?: string };
+type PhotoReactions = { count?: number; likedByMe?: boolean };
 
 // ─── Animated heart burst ─────────────────────────────────────────────────────
 
@@ -156,8 +164,16 @@ export default function GalleryPhotoViewer() {
 
   const [currentIndex, setCurrentIndex] = useState(Number(startIndex ?? 0));
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [commentText, setCommentText] = useState('');
+  const [gifUrls, setGifUrls] = useState<string[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const accessToken = useAuthStore((state) => state.accessToken);
   const { share, sharing } = useSharePhoto();
+  const queryClient = useQueryClient();
+  const colors = Colors[resolveThemeMode(useColorScheme())];
+  const commentInputRef = useRef<TextInput>(null);
 
   // Re-use the already-cached album query — no extra network request
   const { data } = useQuery({
@@ -177,6 +193,73 @@ export default function GalleryPhotoViewer() {
   const handleZoomed = useCallback((zoomed: boolean) => {
     setScrollEnabled(!zoomed);
   }, []);
+
+  const currentPhoto = items[currentIndex] ?? null;
+  const currentPhotoId = String(currentPhoto?.id ?? '');
+  const reactionQuery = useQuery({
+    queryKey: ['gallery-photo-reactions', currentPhotoId, accessToken],
+    queryFn: () => getReactions({ entityType: 'gallery_photo', entityId: currentPhotoId }, accessToken),
+    enabled: Boolean(currentPhotoId),
+  });
+  const commentsQuery = useQuery({
+    queryKey: ['gallery-photo-comments', currentPhotoId],
+    queryFn: () => getComments({ entityType: 'gallery_photo', entityId: currentPhotoId, page: 1, limit: 20 }),
+    enabled: Boolean(currentPhotoId),
+  });
+  const comments = useMemo(
+    () =>
+      commentsQuery.data && typeof commentsQuery.data === 'object' && 'comments' in commentsQuery.data
+        ? ((commentsQuery.data as { comments?: Array<{ id: number; body: string; author?: { name?: string } }> }).comments ?? [])
+        : [],
+    [commentsQuery.data],
+  );
+  const photoReactions = (reactionQuery.data ?? {}) as PhotoReactions;
+  const commentEngagementQuery = useQuery({
+    queryKey: ['gallery-photo-comment-engagement', currentPhotoId, comments.map((comment) => comment.id).join(','), accessToken],
+    queryFn: () => getBulkEngagement('comment', comments.map((comment) => String(comment.id)), accessToken),
+    enabled: comments.length > 0,
+  });
+
+  const reactionMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getValidAccessToken();
+      if (!token || !currentPhotoId) throw new Error('Please sign in again.');
+      return postReactionToggle(token, { entityType: 'gallery_photo', entityId: currentPhotoId });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-reactions', currentPhotoId] });
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-engagement'] });
+    },
+  });
+  const commentMutation = useMutation({
+    mutationFn: async () => {
+      const token = await getValidAccessToken();
+      if (!token || !currentPhotoId) throw new Error('Please sign in again.');
+      return postComment(token, {
+        entityType: 'gallery_photo',
+        entityId: currentPhotoId,
+        body: serializeComposerBody(commentText, gifUrls),
+      });
+    },
+    onSuccess: () => {
+      setCommentText('');
+      setGifUrls([]);
+      setCommentsOpen(true);
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-comments', currentPhotoId] });
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-reactions', currentPhotoId] });
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-engagement'] });
+    },
+  });
+  const commentReactionMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+      return postReactionToggle(token, { entityType: 'comment', entityId: String(commentId) });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['gallery-photo-comment-engagement', currentPhotoId] });
+    },
+  });
 
   const handleReact = useCallback(async (photoId: number) => {
     try {
@@ -251,6 +334,67 @@ export default function GalleryPhotoViewer() {
         </View>
       ) : null}
 
+      {currentPhoto ? (
+        <View style={styles.bottomOverlay}>
+          <View style={styles.bottomActions}>
+            <Pressable onPress={() => reactionMutation.mutate()} style={[styles.bottomPill, { backgroundColor: photoReactions.likedByMe ? colors.accentSoft : 'rgba(0,0,0,0.55)', borderColor: photoReactions.likedByMe ? colors.accent : 'rgba(255,255,255,0.12)' }]}>
+              <Ionicons name={photoReactions.likedByMe ? 'heart' : 'heart-outline'} size={16} color={photoReactions.likedByMe ? colors.accent : '#FFFFFF'} />
+              <Text style={[styles.bottomPillText, { color: photoReactions.likedByMe ? colors.accent : '#FFFFFF' }]}>{photoReactions.count ?? 0}</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => {
+                setCommentsOpen((value) => !value);
+                requestAnimationFrame(() => commentInputRef.current?.focus());
+              }}
+              style={[styles.bottomPill, { backgroundColor: comments.length > 0 ? colors.accentSoft : 'rgba(0,0,0,0.55)', borderColor: comments.length > 0 ? colors.accent : 'rgba(255,255,255,0.12)' }]}>
+              <Ionicons name={comments.length > 0 ? 'chatbubble-ellipses' : 'chatbubble-ellipses-outline'} size={16} color={comments.length > 0 ? colors.accent : '#FFFFFF'} />
+              <Text style={[styles.bottomPillText, { color: comments.length > 0 ? colors.accent : '#FFFFFF' }]}>{comments.length}</Text>
+            </Pressable>
+          </View>
+
+          {commentsOpen ? (
+            <View style={styles.commentsPanel}>
+              <FlatList
+                data={comments}
+                keyExtractor={(item) => String(item.id)}
+                keyboardShouldPersistTaps="handled"
+                style={styles.commentsList}
+                renderItem={({ item }) => {
+                  const engagement = commentEngagementQuery.data?.[item.id] ?? { reactionCount: 0, likedByMe: false };
+                  return (
+                    <View style={styles.commentCard}>
+                      <Text style={styles.commentAuthor}>{item.author?.name ?? 'Member'}</Text>
+                      <RichBody body={item.body} />
+                      <Pressable onPress={() => commentReactionMutation.mutate(item.id)} style={styles.commentLikeRow}>
+                        <Ionicons name={engagement.likedByMe ? 'heart' : 'heart-outline'} size={15} color={engagement.likedByMe ? '#F6D9CB' : '#D7DCE4'} />
+                        <Text style={styles.commentLikeText}>{engagement.reactionCount}</Text>
+                      </Pressable>
+                    </View>
+                  );
+                }}
+              />
+              <Input
+                ref={commentInputRef}
+                value={commentText}
+                onChangeText={setCommentText}
+                placeholder="Comment on this photo"
+                multiline
+                style={styles.commentInput}
+              />
+              <View style={styles.commentToolbar}>
+                <Pressable onPress={() => setGifPickerOpen(true)} style={styles.gifButton}>
+                  <Ionicons name="images-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.gifButtonText}>GIF</Text>
+                </Pressable>
+              </View>
+              <PrimaryButton busy={commentMutation.isPending} disabled={!commentText.trim() && gifUrls.length === 0} onPress={() => commentMutation.mutate()}>
+                Post Comment
+              </PrimaryButton>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
+
       {/* Photo pager */}
       <FlatList
         data={items}
@@ -276,6 +420,8 @@ export default function GalleryPhotoViewer() {
           />
         )}
       />
+
+      <GifPicker visible={gifPickerOpen} onClose={() => setGifPickerOpen(false)} onSelect={(gifUrl) => setGifUrls([gifUrl])} />
     </View>
   );
 }
@@ -327,6 +473,86 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
     fontSize: 12,
     fontWeight: '500',
+  },
+  bottomOverlay: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: Platform.OS === 'ios' ? 78 : 48,
+    zIndex: 10,
+    gap: 10,
+  },
+  bottomActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  bottomPill: {
+    minHeight: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bottomPillText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 14,
+  },
+  commentsPanel: {
+    maxHeight: SH * 0.42,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    padding: 12,
+    gap: 10,
+  },
+  commentsList: {
+    maxHeight: SH * 0.22,
+  },
+  commentCard: {
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.12)',
+    gap: 6,
+  },
+  commentAuthor: {
+    color: '#FFFFFF',
+    fontFamily: Fonts.rounded,
+    fontSize: 14,
+  },
+  commentLikeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  commentLikeText: {
+    color: '#FFFFFF',
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  commentInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
+    paddingTop: Spacing.two,
+  },
+  commentToolbar: {
+    flexDirection: 'row',
+  },
+  gifButton: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  gifButtonText: {
+    color: '#FFFFFF',
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
   },
   photoSlide: {
     width: SW,

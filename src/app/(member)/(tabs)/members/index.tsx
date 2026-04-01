@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { router, type Href } from 'expo-router';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, StyleSheet, Text, View, type GestureResponderEvent } from 'react-native';
 
 import { Avatar, Card, GhostButton, Input, SectionTitle } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
@@ -260,8 +260,8 @@ export default function MembersScreen() {
   const joiningCount = useMemo(() => members.filter((member) => member.isJoining).length, [members]);
   const loading = listQuery.isLoading || searchQuery.isLoading || engagementQuery.isLoading;
 
-  return (
-    <Screen scroll>
+  const header = (
+    <View style={styles.headerStack}>
       <SectionTitle
         eyebrow="Directory"
         title="The people behind the Silver Circle"
@@ -400,9 +400,22 @@ export default function MembersScreen() {
       ) : null}
 
       {loading ? <ActivityIndicator color={colors.accent} /> : null}
+    </View>
+  );
 
-      <View style={styles.stack}>
-        {members.map((member) => {
+  return (
+    <Screen>
+      <FlatList
+        data={members}
+        keyExtractor={(member) => member.id}
+        ListHeaderComponent={header}
+        contentContainerStyle={styles.listContent}
+        keyboardShouldPersistTaps="handled"
+        initialNumToRender={12}
+        maxToRenderPerBatch={12}
+        windowSize={8}
+        removeClippedSubviews
+        renderItem={({ item: member }) => {
           const contributor = Boolean(member.contributionAmount);
           const engagement = engagementQuery.data?.[Number(member.id)] ?? { reactionCount: 0, commentCount: 0, likedByMe: false };
           return (
@@ -471,13 +484,28 @@ export default function MembersScreen() {
               )}
             </Pressable>
           );
-        })}
-      </View>
+        }}
+        ListEmptyComponent={
+          !loading ? (
+            <Card>
+              <Text style={[styles.emptyListText, { color: colors.textSecondary }]}>No members match the current search or filters.</Text>
+            </Card>
+          ) : null
+        }
+      />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  headerStack: {
+    gap: Spacing.three,
+  },
+  listContent: {
+    padding: Spacing.four,
+    paddingBottom: 124,
+    gap: Spacing.three,
+  },
   overviewCard: {
     borderRadius: 34,
     gap: Spacing.three,
@@ -567,9 +595,6 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.rounded,
     fontSize: 13,
   },
-  stack: {
-    gap: Spacing.three,
-  },
   memberCard: {
     gap: Spacing.three,
     borderRadius: 32,
@@ -654,5 +679,10 @@ const styles = StyleSheet.create({
   statCount: {
     fontFamily: Fonts.rounded,
     fontSize: 15,
+  },
+  emptyListText: {
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });

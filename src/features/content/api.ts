@@ -25,7 +25,8 @@ import {
   API_UPLOAD,
 } from '@shared/contracts/api-routes';
 
-type EngagementEntityType = 'member' | 'gallery_album' | 'gallery_photo' | 'story';
+export type ReactionEntityType = 'member' | 'gallery_album' | 'gallery_photo' | 'story' | 'comment';
+export type CommentableEntityType = 'member' | 'gallery_album' | 'gallery_photo' | 'story';
 
 const API_ENGAGEMENT = '/engagement';
 const API_NEWS = '/news';
@@ -59,7 +60,7 @@ function optionalBearer(accessToken?: string | null): HeadersInit | undefined {
   return { Authorization: `Bearer ${accessToken}` };
 }
 
-function normalizeEntityId(entityType: EngagementEntityType, entityId: string): number {
+function normalizeEntityId(entityType: ReactionEntityType, entityId: string): number {
   if (entityType === 'story') return storyEntityIdAsNumber(entityId);
   const numeric = Number(String(entityId).trim());
   if (!Number.isFinite(numeric)) throw new Error('Invalid entity id');
@@ -155,7 +156,7 @@ export async function getMemberTaggedPhotos(memberId: string) {
 }
 
 export async function getBulkEngagement(
-  entityType: EngagementEntityType,
+  entityType: ReactionEntityType,
   ids: string[],
   accessToken?: string | null,
 ) {
@@ -174,7 +175,7 @@ export async function getBulkEngagement(
 }
 
 export async function getComments(params: {
-  entityType: EngagementEntityType;
+  entityType: CommentableEntityType;
   entityId: string;
   page?: number;
   limit?: number;
@@ -191,7 +192,7 @@ export async function getComments(params: {
 
 export async function postComment(
   accessToken: string,
-  body: { entityType: EngagementEntityType; entityId: string; body: string },
+  body: { entityType: CommentableEntityType; entityId: string; body: string },
 ) {
   const wire = {
     entityType: body.entityType,
@@ -206,7 +207,7 @@ export async function postComment(
 }
 
 export async function getReactions(
-  params: { entityType: EngagementEntityType; entityId: string },
+  params: { entityType: ReactionEntityType; entityId: string },
   accessToken?: string | null,
 ) {
   const entityId = normalizeEntityId(params.entityType, params.entityId);
@@ -217,7 +218,7 @@ export async function getReactions(
   });
 }
 
-export async function postReactionToggle(accessToken: string, params: { entityType: EngagementEntityType; entityId: string }) {
+export async function postReactionToggle(accessToken: string, params: { entityType: ReactionEntityType; entityId: string }) {
   const wire = {
     entityType: params.entityType,
     entityId: normalizeEntityId(params.entityType, params.entityId),

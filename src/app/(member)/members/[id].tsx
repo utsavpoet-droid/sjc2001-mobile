@@ -25,6 +25,7 @@ import { RichBody } from '@/components/content/rich-body';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import {
+  getBulkEngagement,
   getComments,
   getMember,
   getMemberTaggedPhotos,
@@ -151,10 +152,16 @@ function ContactRow({
 function CommentBubble({
   author,
   body,
+  reactionCount,
+  likedByMe,
+  onLike,
   colors,
 }: {
   author: string;
   body: string;
+  reactionCount: number;
+  likedByMe: boolean;
+  onLike?: () => void;
   colors: ThemeColors;
 }) {
   const mono = initials(author);
@@ -166,6 +173,14 @@ function CommentBubble({
       <View style={[styles.commentBody, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.commentAuthor, { color: colors.text }]}>{author}</Text>
         <RichBody body={body} />
+        <View style={styles.commentMetaRow}>
+          <Pressable onPress={onLike} style={styles.commentLikeButton}>
+            <Ionicons name={likedByMe ? 'heart' : 'heart-outline'} size={16} color={likedByMe ? colors.accent : colors.textSecondary} />
+            <Text style={[styles.commentLikeText, { color: likedByMe ? colors.accent : colors.textSecondary }]}>
+              {reactionCount}
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -191,6 +206,23 @@ export default function MemberDetailScreen() {
   const commentsQuery = useQuery({
     queryKey: ['member-comments', id],
     queryFn: () => getComments({ entityType: 'member', entityId: String(id), page: 1, limit: 20 }),
+  });
+  const comments =
+    commentsQuery.data &&
+    typeof commentsQuery.data === 'object' &&
+    'comments' in commentsQuery.data
+      ? (
+          (
+            commentsQuery.data as {
+              comments?: Array<{ id: number; body: string; author?: { name?: string } }>;
+            }
+          ).comments ?? []
+        )
+      : [];
+  const commentEngagementQuery = useQuery({
+    queryKey: ['member-comment-engagement', id, comments.map((comment) => comment.id).join(','), useAuthStore.getState().accessToken],
+    queryFn: () => getBulkEngagement('comment', comments.map((comment) => String(comment.id)), useAuthStore.getState().accessToken),
+    enabled: comments.length > 0,
   });
   const reactionsQuery = useQuery({
     queryKey: ['member-reactions', id],
@@ -245,6 +277,18 @@ export default function MemberDetailScreen() {
     onError: (e) =>
       Alert.alert('Unable to comment', e instanceof Error ? e.message : 'Try again.'),
   });
+  const commentReactionMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+      return postReactionToggle(token, { entityType: 'comment', entityId: String(commentId) });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['member-comment-engagement', id] });
+    },
+    onError: (e) =>
+      Alert.alert('Unable to react', e instanceof Error ? e.message : 'Try again.'),
+  });
 
   if (memberQuery.isLoading) {
     return (
@@ -257,18 +301,6 @@ export default function MemberDetailScreen() {
   const member = mapMemberDetailFromWire((memberQuery.data ?? {}) as Record<string, unknown>);
   const contribution = formatContribution(member.contributionAmount);
   const heroPhoto = member.photo_urls[0] ?? member.avatar_url ?? null;
-  const comments =
-    commentsQuery.data &&
-    typeof commentsQuery.data === 'object' &&
-    'comments' in commentsQuery.data
-      ? (
-          (
-            commentsQuery.data as {
-              comments?: Array<{ id: number; body: string; author?: { name?: string } }>;
-            }
-          ).comments ?? []
-        )
-      : [];
   const reactions = (reactionsQuery.data ?? {}) as ReactionsResponse;
   const taggedPhotos = useMemo(
     () =>
@@ -480,6 +512,9 @@ export default function MemberDetailScreen() {
               key={c.id}
               author={c.author?.name ?? 'Member'}
               body={c.body}
+              reactionCount={commentEngagementQuery.data?.[c.id]?.reactionCount ?? 0}
+              likedByMe={Boolean(commentEngagementQuery.data?.[c.id]?.likedByMe)}
+              onLike={() => commentReactionMutation.mutate(c.id)}
               colors={colors}
             />
           ))}
@@ -764,6 +799,19 @@ const styles = StyleSheet.create({
   commentAuthor: {
     fontFamily: Fonts.rounded,
     fontSize: 14,
+  },
+  commentMetaRow: {
+    flexDirection: 'row',
+    marginTop: Spacing.one,
+  },
+  commentLikeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  commentLikeText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
   },
 
   // Composer

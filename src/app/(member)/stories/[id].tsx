@@ -11,7 +11,7 @@ import { GifPicker } from '@/components/content/gif-picker';
 import { Screen } from '@/components/ui/screen';
 import { RichBody } from '@/components/content/rich-body';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
-import { getComments, getStory, postComment, postReactionToggle } from '@/features/content/api';
+import { getBulkEngagement, getComments, getStory, postComment, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
@@ -61,6 +61,16 @@ export default function StoryDetailScreen() {
     queryKey: ['story-comments', id],
     queryFn: () => getComments({ entityType: 'story', entityId: String(id), page: 1, limit: 20 }),
   });
+  const comments =
+    commentsQuery.data && typeof commentsQuery.data === 'object' && 'comments' in commentsQuery.data
+      ? ((commentsQuery.data as { comments?: Array<{ id: number; body: string; author?: { name?: string } }> }).comments ?? [])
+      : [];
+
+  const commentEngagementQuery = useQuery({
+    queryKey: ['story-comment-engagement', id, comments.map((comment) => comment.id).join(','), accessToken],
+    queryFn: () => getBulkEngagement('comment', comments.map((comment) => String(comment.id)), accessToken),
+    enabled: comments.length > 0,
+  });
 
   const reactionMutation = useMutation({
     mutationFn: async () => {
@@ -70,6 +80,20 @@ export default function StoryDetailScreen() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['story', id] });
+    },
+    onError: (error) => {
+      Alert.alert('Unable to react', error instanceof Error ? error.message : 'Try again.');
+    },
+  });
+
+  const commentReactionMutation = useMutation({
+    mutationFn: async (commentId: number) => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+      return postReactionToggle(token, { entityType: 'comment', entityId: String(commentId) });
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['story-comment-engagement', id] });
     },
     onError: (error) => {
       Alert.alert('Unable to react', error instanceof Error ? error.message : 'Try again.');
@@ -114,11 +138,6 @@ export default function StoryDetailScreen() {
     );
   }
 
-  const comments =
-    commentsQuery.data && typeof commentsQuery.data === 'object' && 'comments' in commentsQuery.data
-      ? ((commentsQuery.data as { comments?: Array<{ id: number; body: string; author?: { name?: string } }> }).comments ?? [])
-      : [];
-
   return (
     <Screen scroll>
       <BackLink label="Back to stories" />
@@ -151,12 +170,23 @@ export default function StoryDetailScreen() {
       </Card>
 
       <View style={styles.commentStack}>
-        {comments.map((comment) => (
+        {comments.map((comment) => {
+          const engagement = commentEngagementQuery.data?.[comment.id] ?? { reactionCount: 0, commentCount: 0, likedByMe: false };
+          return (
           <Card key={comment.id}>
             <Text style={[styles.commentAuthor, { color: colors.text }]}>{comment.author?.name ?? 'Member'}</Text>
             <RichBody body={comment.body} />
+            <View style={styles.commentActionRow}>
+              <ActionStat
+                icon={engagement.likedByMe ? 'heart' : 'heart-outline'}
+                label="Likes"
+                count={engagement.reactionCount}
+                active={engagement.likedByMe}
+                onPress={() => commentReactionMutation.mutate(comment.id)}
+              />
+            </View>
           </Card>
-        ))}
+        )})}
       </View>
 
       <Card style={styles.commentComposer}>
@@ -295,5 +325,10 @@ const styles = StyleSheet.create({
   commentAuthor: {
     fontFamily: Fonts.rounded,
     fontSize: 16,
+  },
+  commentActionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginTop: Spacing.one,
   },
 });
