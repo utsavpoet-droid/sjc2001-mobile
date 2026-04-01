@@ -173,10 +173,21 @@ export default function MembersScreen() {
     },
   });
 
-  const baseMembers = useMemo(
-    () => (query.trim().length >= 2 ? normalizeMembersList(searchQuery.data) : normalizeMembersList(listQuery.data)),
-    [listQuery.data, query, searchQuery.data],
-  );
+  const fullDirectoryMembers = useMemo(() => normalizeMembersList(listQuery.data), [listQuery.data]);
+
+  const baseMembers = useMemo(() => {
+    if (query.trim().length < 2) return fullDirectoryMembers;
+
+    const fullById = new Map(fullDirectoryMembers.map((member) => [member.id, member]));
+    return normalizeMembersList(searchQuery.data).map((member) => ({
+      ...(fullById.get(member.id) ?? {}),
+      ...member,
+      isJoining: member.isJoining ?? fullById.get(member.id)?.isJoining,
+      contributionAmount: member.contributionAmount ?? fullById.get(member.id)?.contributionAmount ?? null,
+      avatar_url: member.avatar_url || fullById.get(member.id)?.avatar_url || null,
+      location_label: member.location_label || fullById.get(member.id)?.location_label || null,
+    }));
+  }, [fullDirectoryMembers, query, searchQuery.data]);
 
   const membersByCountry = useMemo(() => {
     const map = new Map<string, Set<string>>();

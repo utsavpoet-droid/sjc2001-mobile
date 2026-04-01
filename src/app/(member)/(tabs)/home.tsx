@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Link, type Href } from 'expo-router';
+import { Link, router, type Href } from 'expo-router';
 import React from 'react';
 import {
   Dimensions,
@@ -115,7 +115,7 @@ export default function HomeScreen() {
     queryFn: () => getNews(),
   });
   const newsItems = Array.isArray(newsQuery.data) ? newsQuery.data.slice(0, 4) : [];
-  type NewsItem = { id?: number; title?: string | null; publishedAt?: string | null };
+  type NewsItem = { id?: number; title?: string | null; body?: string | null; publishedAt?: string | null };
   const featuredNews = newsItems[0] as NewsItem | undefined;
   const restNews = (newsItems.slice(1) as NewsItem[]);
 
@@ -192,23 +192,30 @@ export default function HomeScreen() {
 
           {/* Featured item */}
           {featuredNews ? (
-            <View style={[styles.newsFeatured, { backgroundColor: colors.backgroundSoft, borderColor: colors.border }]}>
+            <Pressable
+              onPress={() => featuredNews.id && router.push(`/(member)/news/${featuredNews.id}` as Href)}
+              style={({ pressed }) => [
+                styles.newsFeatured,
+                { backgroundColor: colors.backgroundSoft, borderColor: colors.border, opacity: pressed ? 0.88 : 1 },
+              ]}>
               <Text style={[styles.newsFeaturedDate, { color: colors.accent }]}>
                 {formatNewsDate(featuredNews.publishedAt)}
               </Text>
               <Text style={[styles.newsFeaturedTitle, { color: colors.text }]} numberOfLines={3}>
                 {featuredNews.title || 'Update from the circle'}
               </Text>
-            </View>
+            </Pressable>
           ) : null}
 
           {/* Rest as compact rows */}
           {restNews.map((item, i) => (
-            <View
+            <Pressable
               key={String(item.id ?? i)}
-              style={[
+              onPress={() => item.id && router.push(`/(member)/news/${item.id}` as Href)}
+              style={({ pressed }) => [
                 styles.newsRow,
                 i < restNews.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border },
+                { opacity: pressed ? 0.88 : 1 },
               ]}>
               <Text style={[styles.newsRowDate, { color: colors.accent }]}>
                 {formatNewsDate(item.publishedAt)}
@@ -216,7 +223,7 @@ export default function HomeScreen() {
               <Text style={[styles.newsRowTitle, { color: colors.text }]} numberOfLines={2}>
                 {item.title || 'Update from the circle'}
               </Text>
-            </View>
+            </Pressable>
           ))}
 
           {!newsQuery.isLoading && newsItems.length === 0 ? (
