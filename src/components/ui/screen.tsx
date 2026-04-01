@@ -30,7 +30,8 @@ export function Screen({
   const content = scroll ? (
     <ScrollView
       contentContainerStyle={[styles.scrollContent, contentContainerStyle]}
-      keyboardShouldPersistTaps={keyboardShouldPersistTaps}>
+      keyboardShouldPersistTaps={keyboardShouldPersistTaps}
+      keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}>
       {children}
     </ScrollView>
   ) : (
@@ -40,7 +41,7 @@ export function Screen({
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }] }>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboard}>
         {content}
       </KeyboardAvoidingView>

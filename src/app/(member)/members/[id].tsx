@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 
 import { BackLink } from '@/components/ui/back-link';
+import { GifPicker } from '@/components/content/gif-picker';
 import { GhostButton, Input, PrimaryButton } from '@/components/ui/primitives';
 import { RichBody } from '@/components/content/rich-body';
 import { Screen } from '@/components/ui/screen';
@@ -35,6 +36,7 @@ import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getMemberProfiles, memberProfileHasContent } from '@/features/member/api';
 import { resolveBackendUrl } from '@/lib/api/bases';
+import { serializeComposerBody } from '@/lib/content/gif-tokens';
 import { mapMemberDetailFromWire } from '@/lib/api/wire-alignment';
 
 const SW = Dimensions.get('window').width;
@@ -176,7 +178,9 @@ export default function MemberDetailScreen() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const queryClient = useQueryClient();
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
-  const [commentBody, setCommentBody] = useState('');
+  const [commentText, setCommentText] = useState('');
+  const [gifUrls, setGifUrls] = useState<string[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const [heroHeight, setHeroHeight] = useState(PHOTO_WIDTH * 0.9);
   const commentInputRef = useRef<TextInput>(null);
 
@@ -227,10 +231,15 @@ export default function MemberDetailScreen() {
     mutationFn: async () => {
       const token = await getValidAccessToken();
       if (!token) throw new Error('Please sign in again.');
-      return postComment(token, { entityType: 'member', entityId: String(id), body: commentBody });
+      return postComment(token, {
+        entityType: 'member',
+        entityId: String(id),
+        body: serializeComposerBody(commentText, gifUrls),
+      });
     },
     onSuccess: () => {
-      setCommentBody('');
+      setCommentText('');
+      setGifUrls([]);
       void queryClient.invalidateQueries({ queryKey: ['member-comments', id] });
     },
     onError: (e) =>
@@ -478,20 +487,42 @@ export default function MemberDetailScreen() {
       ) : null}
 
       {/* ── COMMENT COMPOSER ─────────────────────────────────────── */}
-      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}> 
         <Text style={[styles.infoHeading, { color: colors.text }]}>Leave a note</Text>
         <Input
           ref={commentInputRef}
-          value={commentBody}
-          onChangeText={setCommentBody}
+          value={commentText}
+          onChangeText={setCommentText}
           placeholder="Write something thoughtful..."
           multiline
           style={styles.commentInput}
         />
+        <View style={styles.commentToolbar}>
+          <Pressable
+            onPress={() => setGifPickerOpen(true)}
+            style={[styles.toolbarButton, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}> 
+            <Ionicons name="images-outline" size={16} color={colors.accent} />
+            <Text style={[styles.toolbarButtonText, { color: colors.text }]}>GIF</Text>
+          </Pressable>
+        </View>
+        {gifUrls[0] ? (
+          <View style={[styles.gifPreviewCard, { backgroundColor: colors.backgroundSoft, borderColor: colors.border }]}> 
+            <Image source={{ uri: resolveBackendUrl(gifUrls[0]) ?? gifUrls[0] }} style={styles.gifPreview} contentFit="cover" />
+            <Pressable onPress={() => setGifUrls([])} style={styles.gifRemoveButton}>
+              <Ionicons name="close-circle" size={20} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
         <PrimaryButton busy={commentMutation.isPending} onPress={() => commentMutation.mutate()}>
           Post comment
         </PrimaryButton>
       </View>
+
+      <GifPicker
+        visible={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={(gifUrl) => setGifUrls([gifUrl])}
+      />
     </Screen>
   );
 }
@@ -740,5 +771,39 @@ const styles = StyleSheet.create({
     minHeight: 110,
     textAlignVertical: 'top',
     paddingTop: Spacing.three,
+  },
+  commentToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  toolbarButton: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  toolbarButtonText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  gifPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  gifPreview: {
+    width: '100%',
+    height: 132,
+  },
+  gifRemoveButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 12,
   },
 });

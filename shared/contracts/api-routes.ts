@@ -19,6 +19,7 @@ export const API_MEMBERS_SEARCH = '/members/search' as const;
 export const API_COMMENTS = '/comments' as const;
 export const API_REACTIONS = '/reactions' as const;
 export const API_UPLOAD = '/upload' as const;
+export const API_GIPHY = '/giphy' as const;
 export const API_POLLS = '/polls' as const;
 export const API_SILVER_JUBILEE = '/silver-jubilee' as const;
 export const API_MEMBER_PROFILE = '/member-profile' as const;

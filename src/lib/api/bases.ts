@@ -6,8 +6,24 @@ type RuntimeImageAuthGlobal = typeof globalThis & {
   __SJC_MOBILE_IMAGE_TOKEN__?: string | null;
 };
 
+type ExpoExtra = {
+  apiBaseUrl?: string;
+  apiContentBaseUrl?: string;
+};
+
+const DEFAULT_PRODUCTION_V1_BASE = 'https://sjcbatch2001.com/api/v1';
+
 function trimSlash(s: string): string {
   return s.replace(/\/$/, '');
+}
+
+function getExpoExtra(): ExpoExtra {
+  try {
+    const constants = require('expo-constants').default as { expoConfig?: { extra?: ExpoExtra } };
+    return constants?.expoConfig?.extra ?? {};
+  } catch {
+    return {};
+  }
 }
 
 function normalizeNativeHost(url: string): string {
@@ -37,11 +53,17 @@ function attachMobileImageToken(url: string): string {
 
 /** `EXPO_PUBLIC_API_BASE_URL` must end with `/api/v1` (e.g. `https://host/api/v1`). */
 export function getV1ApiBase(): string {
-  const b = process.env.EXPO_PUBLIC_API_BASE_URL;
-  if (!b?.trim()) {
-    throw new Error('EXPO_PUBLIC_API_BASE_URL is required');
+  const env = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (env) {
+    return trimSlash(env);
   }
-  return trimSlash(b.trim());
+
+  const expoExtra = getExpoExtra().apiBaseUrl?.trim();
+  if (expoExtra) {
+    return trimSlash(expoExtra);
+  }
+
+  return DEFAULT_PRODUCTION_V1_BASE;
 }
 
 /**
@@ -49,7 +71,7 @@ export function getV1ApiBase(): string {
  * Set `EXPO_PUBLIC_API_CONTENT_BASE_URL` (e.g. `https://host/api`) or derive by stripping `/v1` from the v1 base.
  */
 export function getContentApiBase(): string {
-  const explicit = process.env.EXPO_PUBLIC_API_CONTENT_BASE_URL?.trim();
+  const explicit = process.env.EXPO_PUBLIC_API_CONTENT_BASE_URL?.trim() || getExpoExtra().apiContentBaseUrl?.trim();
   if (explicit) {
     return trimSlash(explicit);
   }

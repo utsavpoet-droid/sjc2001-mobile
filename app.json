@@ -53,6 +53,8 @@
     "owner": "usrivastava0920s-organization",
     "extra": {
       "router": {},
+      "apiBaseUrl": "https://sjcbatch2001.com/api/v1",
+      "apiContentBaseUrl": "https://sjcbatch2001.com/api",
       "eas": {
         "projectId": "c6428a1d-216a-43e4-a874-7c5028edb863"
       }

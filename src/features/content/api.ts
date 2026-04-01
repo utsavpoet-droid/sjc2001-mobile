@@ -15,6 +15,7 @@ import {
 import {
   API_COMMENTS,
   API_GALLERY,
+  API_GIPHY,
   API_MEMBERS,
   API_MEMBERS_SEARCH,
   API_POLLS,
@@ -28,6 +29,13 @@ type EngagementEntityType = 'member' | 'gallery_album' | 'gallery_photo' | 'stor
 
 const API_ENGAGEMENT = '/engagement';
 const API_NEWS = '/news';
+
+export type GifSearchResult = {
+  id: string;
+  title: string;
+  previewUrl: string;
+  url: string;
+};
 
 function buildQuery(params: Record<string, string | number | boolean | undefined>): string {
   const sp = new URLSearchParams();
@@ -99,6 +107,11 @@ export async function getGalleryAlbum(albumId: string) {
 
 export async function getNews() {
   return requestContentJson<unknown[]>(API_NEWS, { method: 'GET' });
+}
+
+export async function getGifs(params: { q?: string; limit?: number }) {
+  const qs = buildQuery({ q: params.q?.trim() || undefined, limit: params.limit ?? 18 });
+  return requestContentJson<{ gifs?: GifSearchResult[]; error?: string }>(`${API_GIPHY}${qs}`, { method: 'GET' });
 }
 
 export async function getMembersPage(params: {

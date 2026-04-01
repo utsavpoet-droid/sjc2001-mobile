@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useGlobalSearchParams } from 'expo-router';
 import React, { useRef, useState } from 'react';
@@ -6,12 +7,15 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View 
 
 import { Avatar, Card, Input, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
 import { BackLink } from '@/components/ui/back-link';
+import { GifPicker } from '@/components/content/gif-picker';
 import { Screen } from '@/components/ui/screen';
 import { RichBody } from '@/components/content/rich-body';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getComments, getStory, postComment, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { resolveBackendUrl } from '@/lib/api/bases';
+import { serializeComposerBody } from '@/lib/content/gif-tokens';
 
 function ActionStat({
   icon,
@@ -43,7 +47,9 @@ export default function StoryDetailScreen() {
   const accessToken = useAuthStore((state) => state.accessToken);
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
   const queryClient = useQueryClient();
-  const [commentBody, setCommentBody] = useState('');
+  const [commentText, setCommentText] = useState('');
+  const [gifUrls, setGifUrls] = useState<string[]>([]);
+  const [gifPickerOpen, setGifPickerOpen] = useState(false);
   const commentInputRef = useRef<TextInput>(null);
 
   const storyQuery = useQuery({
@@ -77,11 +83,12 @@ export default function StoryDetailScreen() {
       return postComment(token, {
         entityType: 'story',
         entityId: String(id),
-        body: commentBody,
+        body: serializeComposerBody(commentText, gifUrls),
       });
     },
     onSuccess: () => {
-      setCommentBody('');
+      setCommentText('');
+      setGifUrls([]);
       void queryClient.invalidateQueries({ queryKey: ['story-comments', id] });
       void queryClient.invalidateQueries({ queryKey: ['story', id] });
     },
@@ -156,19 +163,41 @@ export default function StoryDetailScreen() {
         <Text style={[styles.commentTitle, { color: colors.text }]}>Join the conversation</Text>
         <Input
           ref={commentInputRef}
-          value={commentBody}
-          onChangeText={setCommentBody}
+          value={commentText}
+          onChangeText={setCommentText}
           placeholder="Write a comment"
           multiline
           style={styles.multilineInput}
         />
+        <View style={styles.commentToolbar}>
+          <Pressable
+            onPress={() => setGifPickerOpen(true)}
+            style={[styles.toolbarButton, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}> 
+            <Ionicons name="images-outline" size={16} color={colors.accent} />
+            <Text style={[styles.toolbarButtonText, { color: colors.text }]}>GIF</Text>
+          </Pressable>
+        </View>
+        {gifUrls[0] ? (
+          <View style={[styles.gifPreviewCard, { backgroundColor: colors.backgroundSoft, borderColor: colors.border }]}> 
+            <Image source={{ uri: resolveBackendUrl(gifUrls[0]) ?? gifUrls[0] }} style={styles.gifPreview} contentFit="cover" />
+            <Pressable onPress={() => setGifUrls([])} style={styles.gifRemoveButton}>
+              <Ionicons name="close-circle" size={20} color={colors.accent} />
+            </Pressable>
+          </View>
+        ) : null}
         <PrimaryButton
           busy={commentMutation.isPending}
-          disabled={!commentBody.trim()}
+          disabled={!commentText.trim() && gifUrls.length === 0}
           onPress={() => commentMutation.mutate()}>
           Post Comment
         </PrimaryButton>
       </Card>
+
+      <GifPicker
+        visible={gifPickerOpen}
+        onClose={() => setGifPickerOpen(false)}
+        onSelect={(gifUrl) => setGifUrls([gifUrl])}
+      />
     </Screen>
   );
 }
@@ -216,6 +245,40 @@ const styles = StyleSheet.create({
   },
   commentComposer: {
     gap: Spacing.two,
+  },
+  commentToolbar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  toolbarButton: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  toolbarButtonText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  gifPreviewCard: {
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  gifPreview: {
+    width: '100%',
+    height: 132,
+  },
+  gifRemoveButton: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 12,
   },
   commentTitle: {
     fontFamily: Fonts.rounded,
