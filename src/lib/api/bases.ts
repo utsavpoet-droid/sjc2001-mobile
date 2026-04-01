@@ -11,7 +11,7 @@ type ExpoExtra = {
   apiContentBaseUrl?: string;
 };
 
-const DEFAULT_PRODUCTION_V1_BASE = 'https://sjcbatch2001.com/api/v1';
+const DEFAULT_PRODUCTION_V1_BASE = 'https://www.sjcbatch2001.com/api/v1';
 
 function trimSlash(s: string): string {
   return s.replace(/\/$/, '');
