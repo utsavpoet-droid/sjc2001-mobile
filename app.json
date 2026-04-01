@@ -27,7 +27,8 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.utsav.sjc2001",
       "blockedPermissions": [
-        "android.permission.CAMERA"
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
