@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useGlobalSearchParams, type Href } from 'expo-router';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -290,6 +290,20 @@ export default function MemberDetailScreen() {
       Alert.alert('Unable to react', e instanceof Error ? e.message : 'Try again.'),
   });
 
+  const member = mapMemberDetailFromWire((memberQuery.data ?? {}) as Record<string, unknown>);
+  const contribution = formatContribution(member.contributionAmount);
+  const heroPhoto = member.photo_urls[0] ?? member.avatar_url ?? null;
+  const reactions = (reactionsQuery.data ?? {}) as ReactionsResponse;
+  const taggedPhotos = (((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).photos ?? []).map((p) => ({
+    ...p,
+    resolvedUrl: resolveBackendUrl(p.photoUrl ?? null),
+  }));
+  const taggedSummary = ((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).summary ?? {};
+  const tappableTaggedUris = taggedPhotos
+    .map((p) => p.resolvedUrl)
+    .filter((u): u is string => Boolean(u));
+  const hasExtendedProfile = memberProfileHasContent(memberProfileQuery.data);
+
   if (memberQuery.isLoading) {
     return (
       <Screen>
@@ -297,24 +311,6 @@ export default function MemberDetailScreen() {
       </Screen>
     );
   }
-
-  const member = mapMemberDetailFromWire((memberQuery.data ?? {}) as Record<string, unknown>);
-  const contribution = formatContribution(member.contributionAmount);
-  const heroPhoto = member.photo_urls[0] ?? member.avatar_url ?? null;
-  const reactions = (reactionsQuery.data ?? {}) as ReactionsResponse;
-  const taggedPhotos = useMemo(
-    () =>
-      (((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).photos ?? []).map((p) => ({
-        ...p,
-        resolvedUrl: resolveBackendUrl(p.photoUrl ?? null),
-      })),
-    [taggedPhotosQuery.data],
-  );
-  const taggedSummary = ((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).summary ?? {};
-  const tappableTaggedUris = taggedPhotos
-    .map((p) => p.resolvedUrl)
-    .filter((u): u is string => Boolean(u));
-  const hasExtendedProfile = memberProfileHasContent(memberProfileQuery.data);
 
   return (
     <Screen scroll>
