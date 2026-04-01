@@ -76,14 +76,14 @@ function MemberStat({
       ? '#F1D7CA'
       : colors.accentSoft
     : inverted
-      ? 'rgba(255,255,255,0.10)'
+      ? 'rgba(255,255,255,0.14)'
       : colors.surface;
   const borderColor = active
     ? inverted
       ? '#F1D7CA'
       : colors.accent
     : inverted
-      ? 'rgba(255,255,255,0.16)'
+      ? 'rgba(255,255,255,0.22)'
       : colors.border;
   const iconColor = active
     ? inverted
@@ -274,7 +274,7 @@ export default function MembersScreen() {
             <Text style={styles.overviewKicker}>Live directory</Text>
             <Text style={styles.overviewTitle}>From classmates to conversations — like, comment, reconnect.</Text>
           </View>
-          <View style={[styles.overviewBadge, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+          <View style={[styles.overviewBadge, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
             <Ionicons name="sparkles" size={14} color="#F4D6C9" />
           </View>
         </View>
@@ -426,8 +426,8 @@ export default function MembersScreen() {
                     styles.memberCard,
                     contributor
                       ? {
-                          backgroundColor: '#0F1B2D',
-                          borderColor: '#0F1B2D',
+                          backgroundColor: '#102035',
+                          borderColor: '#24344D',
                           shadowColor: colors.accent,
                           shadowOpacity: 0.18,
                           shadowRadius: 20,
@@ -499,8 +499,8 @@ export default function MembersScreen() {
 
 const styles = StyleSheet.create({
   deepSurfaceCard: {
-    backgroundColor: '#0F1B2D',
-    borderColor: '#0F1B2D',
+    backgroundColor: '#101F34',
+    borderColor: '#24344D',
   },
   headerStack: {
     gap: Spacing.three,
@@ -525,14 +525,14 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
   },
   overviewKicker: {
-    color: '#F3D8CB',
+    color: '#FFD8C6',
     fontFamily: Fonts.mono,
     fontSize: 11,
     letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
   overviewTitle: {
-    color: '#FFF7F1',
+    color: '#FFF9F4',
     fontFamily: Fonts.rounded,
     fontSize: 28,
     lineHeight: 34,
@@ -553,12 +553,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   metricValue: {
-    color: '#FFF7F1',
+    color: '#FFF9F4',
     fontFamily: Fonts.rounded,
     fontSize: 28,
   },
   metricLabel: {
-    color: '#D5DDE6',
+    color: '#DDE5EE',
     fontFamily: Fonts.sans,
     fontSize: 13,
   },

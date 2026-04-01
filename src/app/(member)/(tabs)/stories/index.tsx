@@ -88,7 +88,7 @@ export default function StoriesScreen() {
           {({ pressed }) => (
             <Card style={[styles.composeCard, styles.composeCardSurface, { transform: [{ scale: pressed ? 0.988 : 1 }] }]}>
               <View style={styles.composeRow}>
-                <View style={[styles.composeIcon, { backgroundColor: 'rgba(255,255,255,0.12)' }]}>
+                <View style={[styles.composeIcon, { backgroundColor: 'rgba(255,255,255,0.18)' }]}>
                   <Ionicons name="create-outline" size={18} color="#F7E3D8" />
                 </View>
                 <View style={styles.composeCopy}>
@@ -159,8 +159,8 @@ const styles = StyleSheet.create({
     borderRadius: 30,
   },
   composeCardSurface: {
-    backgroundColor: '#111B2E',
-    borderColor: '#111B2E',
+    backgroundColor: '#102035',
+    borderColor: '#24344D',
   },
   composeRow: {
     flexDirection: 'row',
@@ -179,12 +179,12 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   composeTitle: {
-    color: '#FFF6F0',
+    color: '#FFF9F4',
     fontFamily: Fonts.rounded,
     fontSize: 20,
   },
   composeText: {
-    color: '#E8D7CF',
+    color: '#E7D8D0',
     fontFamily: Fonts.sans,
     fontSize: 13,
     lineHeight: 18,
