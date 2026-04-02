@@ -14,6 +14,7 @@ import {
   postMemberTotpVerify,
 } from '@/features/member/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { registerDeviceForPush, requestPushPermissions } from '@/lib/notifications/push';
 
 export default function SettingsScreen() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
@@ -30,6 +31,7 @@ export default function SettingsScreen() {
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [secret, setSecret] = useState('');
   const [totpEnabled, setTotpEnabled] = useState(Boolean(user?.totpEnabled));
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   const passwordMutation = useMutation({
     mutationFn: async () => {
@@ -96,6 +98,32 @@ export default function SettingsScreen() {
     },
     onError: (error) => {
       Alert.alert('Unable to disable MFA', error instanceof Error ? error.message : 'Try again.');
+    },
+  });
+
+  const notificationsMutation = useMutation({
+    mutationFn: async () => {
+      const permission = await requestPushPermissions();
+      if (!permission.granted) {
+        throw new Error('Notifications are turned off for Silver Circle on this device.');
+      }
+
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Please sign in again.');
+
+      const result = await registerDeviceForPush(token);
+      if (!result.registered) {
+        throw new Error('Unable to enable notifications right now.');
+      }
+
+      return result;
+    },
+    onSuccess: () => {
+      setNotificationsEnabled(true);
+      Alert.alert('Notifications enabled', 'Silver Circle can now send updates to this device.');
+    },
+    onError: (error) => {
+      Alert.alert('Unable to enable notifications', error instanceof Error ? error.message : 'Try again.');
     },
   });
 
@@ -173,6 +201,22 @@ export default function SettingsScreen() {
             </PrimaryButton>
           </View>
         ) : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={[styles.heading, { color: colors.text }]}>Notifications</Text>
+        <Text style={[styles.caption, { color: colors.textSecondary }]}>
+          {notificationsEnabled
+            ? 'Push notifications are enabled for this device.'
+            : 'Turn on notifications to hear about new activity in Silver Circle.'}
+        </Text>
+        <PrimaryButton
+          busy={notificationsMutation.isPending}
+          disabled={notificationsEnabled}
+          onPress={() => notificationsMutation.mutate()}
+        >
+          {notificationsEnabled ? 'Notifications enabled' : 'Enable notifications'}
+        </PrimaryButton>
       </Card>
 
       <Card style={styles.section}>

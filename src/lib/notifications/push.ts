@@ -98,11 +98,7 @@ export async function registerDeviceForPush(accessToken: string) {
     }
 
     const existing = await Notifications.getPermissionsAsync();
-    let status = existing.status;
-    if (status !== 'granted') {
-      const requested = await Notifications.requestPermissionsAsync();
-      status = requested.status;
-    }
+    const status = existing.status;
 
     if (status !== 'granted') {
       return { registered: false, reason: 'permission-denied' as const };
@@ -130,6 +126,23 @@ export async function registerDeviceForPush(accessToken: string) {
     return { registered: true, token };
   } catch {
     return { registered: false, reason: 'registration-failed' as const };
+  }
+}
+
+export async function requestPushPermissions() {
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    if (existing.status === 'granted') {
+      return { granted: true as const, canAskAgain: existing.canAskAgain };
+    }
+
+    const requested = await Notifications.requestPermissionsAsync();
+    return {
+      granted: requested.status === 'granted',
+      canAskAgain: requested.canAskAgain,
+    };
+  } catch {
+    return { granted: false as const, canAskAgain: false };
   }
 }
 

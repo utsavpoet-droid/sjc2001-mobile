@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React, { useEffect, useState } from 'react';
-import { AppState } from 'react-native';
+import { AppState, InteractionManager } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAuthStore } from '@/features/auth/store/auth-store';
@@ -27,11 +27,16 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hydrate]);
 
   useEffect(() => {
-    void prepareNotificationRuntime().catch(() => {
-      // Push setup is best-effort and must never block app startup.
+    const task = InteractionManager.runAfterInteractions(() => {
+      void prepareNotificationRuntime().catch(() => {
+        // Push setup is best-effort and must never block app startup.
+      });
     });
     const sub = subscribeToNotificationResponses();
-    return () => sub.remove();
+    return () => {
+      task.cancel();
+      sub.remove();
+    };
   }, []);
 
   useEffect(() => {
@@ -49,6 +54,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
     void (async () => {
       try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        if (cancelled) return;
         const token = await getValidAccessToken();
         if (!token || cancelled) return;
         await registerDeviceForPush(token);
