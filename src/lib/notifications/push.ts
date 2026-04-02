@@ -71,58 +71,66 @@ function routeForNotificationData(data: PushPayload): Href | null {
 }
 
 export async function prepareNotificationRuntime() {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'Default',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#C96A4A',
-      sound: 'default',
-    });
+  try {
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#C96A4A',
+        sound: 'default',
+      });
+    }
+  } catch {
+    // Push setup is best-effort and must never block app launch.
   }
 }
 
 export async function registerDeviceForPush(accessToken: string) {
-  if (!Device.isDevice) {
-    return { registered: false, reason: 'simulator' as const };
-  }
-
-  const projectId = getProjectId();
-  if (!projectId) {
-    return { registered: false, reason: 'missing-project-id' as const };
-  }
-
-  const existing = await Notifications.getPermissionsAsync();
-  let status = existing.status;
-  if (status !== 'granted') {
-    const requested = await Notifications.requestPermissionsAsync();
-    status = requested.status;
-  }
-
-  if (status !== 'granted') {
-    return { registered: false, reason: 'permission-denied' as const };
-  }
-
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-  const storedToken = await getStoredPushToken();
-
-  if (!storedToken || storedToken !== token) {
-    if (storedToken) {
-      try {
-        await unregisterPushToken(accessToken, { expoPushToken: storedToken });
-      } catch {
-        // Best effort cleanup; continue with the fresh token registration.
-      }
+  try {
+    if (!Device.isDevice) {
+      return { registered: false, reason: 'simulator' as const };
     }
-    await registerPushToken(accessToken, {
-      expoPushToken: token,
-      platform: Platform.OS,
-      deviceName: Device.deviceName ?? Platform.OS,
-    });
-    await setStoredPushToken(token);
-  }
 
-  return { registered: true, token };
+    const projectId = getProjectId();
+    if (!projectId) {
+      return { registered: false, reason: 'missing-project-id' as const };
+    }
+
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status !== 'granted') {
+      const requested = await Notifications.requestPermissionsAsync();
+      status = requested.status;
+    }
+
+    if (status !== 'granted') {
+      return { registered: false, reason: 'permission-denied' as const };
+    }
+
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    const storedToken = await getStoredPushToken();
+
+    if (!storedToken || storedToken !== token) {
+      if (storedToken) {
+        try {
+          await unregisterPushToken(accessToken, { expoPushToken: storedToken });
+        } catch {
+          // Best effort cleanup; continue with the fresh token registration.
+        }
+      }
+      await registerPushToken(accessToken, {
+        expoPushToken: token,
+        platform: Platform.OS,
+        deviceName: Device.deviceName ?? Platform.OS,
+      });
+      await setStoredPushToken(token);
+    }
+
+    return { registered: true, token };
+  } catch {
+    return { registered: false, reason: 'registration-failed' as const };
+  }
 }
 
 export async function unregisterDeviceForPush(accessToken: string | null) {
@@ -139,11 +147,15 @@ export async function unregisterDeviceForPush(accessToken: string | null) {
 }
 
 export function subscribeToNotificationResponses() {
-  return Notifications.addNotificationResponseReceivedListener((response) => {
-    const data = (response.notification.request.content.data ?? {}) as PushPayload;
-    const href = routeForNotificationData(data);
-    if (href) {
-      router.push(href);
-    }
-  });
+  try {
+    return Notifications.addNotificationResponseReceivedListener((response) => {
+      const data = (response.notification.request.content.data ?? {}) as PushPayload;
+      const href = routeForNotificationData(data);
+      if (href) {
+        router.push(href);
+      }
+    });
+  } catch {
+    return { remove() {} };
+  }
 }

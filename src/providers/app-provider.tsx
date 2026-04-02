@@ -27,7 +27,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hydrate]);
 
   useEffect(() => {
-    void prepareNotificationRuntime();
+    void prepareNotificationRuntime().catch(() => {
+      // Push setup is best-effort and must never block app startup.
+    });
     const sub = subscribeToNotificationResponses();
     return () => sub.remove();
   }, []);
@@ -46,9 +48,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     let cancelled = false;
     void (async () => {
-      const token = await getValidAccessToken();
-      if (!token || cancelled) return;
-      await registerDeviceForPush(token);
+      try {
+        const token = await getValidAccessToken();
+        if (!token || cancelled) return;
+        await registerDeviceForPush(token);
+      } catch {
+        // Push registration is best-effort and must never block signed-in app use.
+      }
     })();
 
     return () => {
