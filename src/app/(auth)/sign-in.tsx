@@ -44,7 +44,7 @@ export default function SignInScreen() {
       });
 
       if (result.kind === 'totp_required') {
-        Alert.alert('Two-factor required', 'This account needs a TOTP code. That screen is the next member flow to wire.');
+        router.push('/(auth)/totp' as never);
         return;
       }
 

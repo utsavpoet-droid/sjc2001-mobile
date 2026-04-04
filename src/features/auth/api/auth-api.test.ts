@@ -79,6 +79,42 @@ describe('auth-api', () => {
     expect(JSON.parse(init.body as string)).toEqual({ refreshToken: 'r' });
   });
 
+  it('postMobileLogin includes totpCode when provided', async () => {
+    (global.fetch as jest.Mock).mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify({
+          success: true,
+          data: {
+            accessToken: 'a3',
+            refreshToken: 'r3',
+            expiresIn: 900,
+            user: {
+              id: 1,
+              role: 'member',
+              memberId: 2,
+              name: 'N',
+              avatarUrl: null,
+            },
+          },
+        }),
+    });
+
+    await postMobileLogin({
+      identifier: 'u@x.com',
+      password: 'p',
+      totpCode: '123456',
+    });
+
+    const [, init] = (global.fetch as jest.Mock).mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      identifier: 'u@x.com',
+      password: 'p',
+      totpCode: '123456',
+    });
+  });
+
   it('getMobileMe uses Bearer access token', async () => {
     (global.fetch as jest.Mock).mockResolvedValue({
       ok: true,

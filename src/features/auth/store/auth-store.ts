@@ -22,6 +22,13 @@ type LoginResult =
   | { kind: 'totp_required' }
   | { kind: 'signed_in' };
 
+type PendingTotpChallenge = {
+  identifier: string;
+  password: string;
+  deviceName?: string;
+  platform?: string;
+};
+
 type AuthState = {
   hydrated: boolean;
   busy: boolean;
@@ -32,14 +39,17 @@ type AuthState = {
   errorMessage: string | null;
   biometricEnabled: boolean;
   biometricLabel: string | null;
+  pendingTotpChallenge: PendingTotpChallenge | null;
   hydrate: () => Promise<void>;
   signIn: (input: MobileLoginRequest) => Promise<LoginResult>;
+  completeTotpSignIn: (totpCode: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   getValidAccessToken: () => Promise<string | null>;
   refreshSession: () => Promise<string | null>;
   setBiometricEnabled: (enabled: boolean) => Promise<void>;
   unlockWithBiometrics: () => Promise<string | null>;
   clearError: () => void;
+  clearPendingTotpChallenge: () => void;
 };
 
 type RuntimeImageAuthGlobal = typeof globalThis & {
@@ -122,6 +132,23 @@ function isAuthFailure(error: unknown) {
   return error instanceof ApiError && (error.status === 401 || error.status === 403);
 }
 
+async function persistSignedInSession(result: {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+  user: MobileMeUser;
+}) {
+  await writeRefreshToken(result.refreshToken);
+  const expiresAt = Date.now() + result.expiresIn * 1000;
+  await writeSessionCache({
+    accessToken: result.accessToken,
+    expiresAt,
+    user: result.user,
+  });
+  setRuntimeAccessToken(result.accessToken);
+  return expiresAt;
+}
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   hydrated: false,
   busy: false,
@@ -132,8 +159,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   errorMessage: null,
   biometricEnabled: false,
   biometricLabel: null,
+  pendingTotpChallenge: null,
 
   clearError: () => set({ errorMessage: null }),
+  clearPendingTotpChallenge: () => set({ pendingTotpChallenge: null }),
 
   hydrate: async () => {
     if (get().hydrated || get().busy) return;
@@ -178,6 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           refreshToken: null,
           user: null,
           expiresAt: null,
+          pendingTotpChallenge: null,
         });
         return;
       }
@@ -191,15 +221,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
       setRuntimeAccessToken(refreshed.accessToken);
 
-      set({
-        ...sessionState,
-        hydrated: true,
-        busy: false,
-        accessToken: refreshed.accessToken,
-        refreshToken: refreshed.refreshToken,
-        expiresAt: Date.now() + refreshed.expiresIn * 1000,
-        user: refreshed.user,
-      });
+        set({
+          ...sessionState,
+          hydrated: true,
+          busy: false,
+          accessToken: refreshed.accessToken,
+          refreshToken: refreshed.refreshToken,
+          expiresAt: Date.now() + refreshed.expiresIn * 1000,
+          user: refreshed.user,
+          pendingTotpChallenge: null,
+        });
     } catch (error) {
       const [refreshToken, cachedAccessToken, cachedExpiresAt, cachedUser, biometricEnabled, biometricInfo] = await Promise.all([
         readRefreshToken(),
@@ -226,6 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           refreshToken: null,
           user: null,
           expiresAt: null,
+          pendingTotpChallenge: null,
           errorMessage: error instanceof Error ? error.message : 'Session restore failed',
         });
         return;
@@ -249,18 +281,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const result = await postMobileLogin(input);
       if (isTotpChallengeData(result)) {
-        set({ busy: false });
+        set({
+          busy: false,
+          pendingTotpChallenge: {
+            identifier: input.identifier,
+            password: input.password,
+            deviceName: input.deviceName,
+            platform: input.platform,
+          },
+        });
         return { kind: 'totp_required' };
       }
 
-      await writeRefreshToken(result.refreshToken);
-      const expiresAt = Date.now() + result.expiresIn * 1000;
-      await writeSessionCache({
-        accessToken: result.accessToken,
-        expiresAt,
-        user: result.user,
-      });
-      setRuntimeAccessToken(result.accessToken);
+      const expiresAt = await persistSignedInSession(result);
       set({
         busy: false,
         hydrated: true,
@@ -268,6 +301,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         refreshToken: result.refreshToken,
         expiresAt,
         user: result.user,
+        pendingTotpChallenge: null,
       });
       return { kind: 'signed_in' };
     } catch (error) {
@@ -275,6 +309,49 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         busy: false,
         errorMessage:
           error instanceof ApiError ? error.message : 'Unable to sign in right now',
+      });
+      throw error;
+    }
+  },
+
+  completeTotpSignIn: async (totpCode) => {
+    const challenge = get().pendingTotpChallenge;
+    if (!challenge) {
+      set({ errorMessage: 'Your sign-in session expired. Please enter your password again.' });
+      throw new Error('No pending TOTP challenge');
+    }
+
+    set({ busy: true, errorMessage: null });
+    try {
+      const result = await postMobileLogin({
+        ...challenge,
+        totpCode: totpCode.trim(),
+      });
+
+      if (isTotpChallengeData(result)) {
+        set({
+          busy: false,
+          errorMessage: 'Invalid verification code. Please try again.',
+        });
+        return { kind: 'totp_required' };
+      }
+
+      const expiresAt = await persistSignedInSession(result);
+      set({
+        busy: false,
+        hydrated: true,
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        expiresAt,
+        user: result.user,
+        pendingTotpChallenge: null,
+      });
+      return { kind: 'signed_in' };
+    } catch (error) {
+      set({
+        busy: false,
+        errorMessage:
+          error instanceof ApiError ? error.message : 'Unable to verify your code right now',
       });
       throw error;
     }
@@ -301,6 +378,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         refreshToken: null,
         expiresAt: null,
         user: null,
+        pendingTotpChallenge: null,
       });
     }
   },
@@ -314,6 +392,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         refreshToken: null,
         expiresAt: null,
         user: null,
+        pendingTotpChallenge: null,
       });
       return null;
     }
@@ -346,6 +425,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           refreshToken: null,
           expiresAt: null,
           user: null,
+          pendingTotpChallenge: null,
         });
         return null;
       }
