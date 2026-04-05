@@ -113,3 +113,25 @@ export function resolveBackendUrl(url?: string | null): string | null {
     : joinBasePath(getSiteBase(), url);
   return attachMobileImageToken(resolved);
 }
+
+export function resolveResponsiveImageUrl(
+  url?: string | null,
+  options?: { width?: number; quality?: number },
+): string | null {
+  const resolved = resolveBackendUrl(url);
+  if (!resolved) return null;
+
+  const width = options?.width ? Math.max(1, Math.round(options.width)) : null;
+  const quality = options?.quality ? Math.max(1, Math.min(100, Math.round(options.quality))) : null;
+  if (!width && !quality) return resolved;
+
+  try {
+    const parsed = new URL(resolved);
+    if (parsed.pathname !== '/api/img') return resolved;
+    if (width) parsed.searchParams.set('w', String(width));
+    if (quality) parsed.searchParams.set('q', String(quality));
+    return parsed.toString();
+  } catch {
+    return resolved;
+  }
+}

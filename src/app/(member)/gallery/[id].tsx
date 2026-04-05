@@ -14,7 +14,7 @@ import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getBulkEngagement, getComments, getGalleryAlbum, getReactions, postComment, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { resolveBackendUrl } from '@/lib/api/bases';
+import { resolveResponsiveImageUrl } from '@/lib/api/bases';
 import { serializeComposerBody } from '@/lib/content/gif-tokens';
 
 type AlbumDetail = {
@@ -50,14 +50,6 @@ export default function GalleryDetailScreen() {
     queryFn: () => getComments({ entityType: 'gallery_album', entityId: String(id), page: 1, limit: 20 }),
     enabled: !!id,
   });
-
-  if (query.isLoading) {
-    return (
-      <Screen>
-        <ActivityIndicator color={colors.accent} />
-      </Screen>
-    );
-  }
 
   const album = (query.data ?? {}) as AlbumDetail;
   const albumReactions = (albumReactionsQuery.data ?? {}) as AlbumReactions;
@@ -132,6 +124,14 @@ export default function GalleryDetailScreen() {
     }
   }, [focusComments]);
 
+  if (query.isLoading) {
+    return (
+      <Screen>
+        <ActivityIndicator color={colors.accent} />
+      </Screen>
+    );
+  }
+
   return (
     <Screen scroll>
       <BackLink label="Back to gallery" />
@@ -156,7 +156,7 @@ export default function GalleryDetailScreen() {
 
       <View style={styles.grid}>
         {(album.photos ?? []).map((photo, index) => {
-          const uri = resolveBackendUrl(photo.photoUrl ?? null);
+          const uri = resolveResponsiveImageUrl(photo.photoUrl ?? null, { width: 900, quality: 76 });
           const engagement = photoEngagementQuery.data?.[Number(photo.id ?? 0)] ?? { reactionCount: 0, commentCount: 0 };
           return (
             <Pressable
@@ -233,7 +233,7 @@ export default function GalleryDetailScreen() {
         </View>
         {gifUrls[0] ? (
           <View style={[styles.gifPreviewCard, { backgroundColor: colors.backgroundSoft, borderColor: colors.border }]}>
-            <Image source={{ uri: resolveBackendUrl(gifUrls[0]) ?? gifUrls[0] }} style={styles.gifPreview} resizeMode="cover" />
+            <Image source={{ uri: resolveResponsiveImageUrl(gifUrls[0], { width: 900, quality: 80 }) ?? gifUrls[0] }} style={styles.gifPreview} resizeMode="cover" />
             <Pressable onPress={() => setGifUrls([])} style={styles.gifRemoveButton}>
               <Ionicons name="close-circle" size={20} color={colors.accent} />
             </Pressable>

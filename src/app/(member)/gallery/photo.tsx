@@ -3,9 +3,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Dimensions,
   FlatList,
   Platform,
   Pressable,
@@ -14,6 +13,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type ViewToken,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -28,22 +28,18 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { GifPicker } from '@/components/content/gif-picker';
-import { Input, PrimaryButton } from '@/components/ui/primitives';
 import { RichBody } from '@/components/content/rich-body';
+import { Input, PrimaryButton } from '@/components/ui/primitives';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getBulkEngagement, getComments, getGalleryAlbum, getReactions, postComment, postReactionToggle } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useSharePhoto } from '@/hooks/use-share-photo';
-import { resolveBackendUrl } from '@/lib/api/bases';
+import { resolveResponsiveImageUrl } from '@/lib/api/bases';
 import { serializeComposerBody } from '@/lib/content/gif-tokens';
-
-const { width: SW, height: SH } = Dimensions.get('window');
 
 type Photo = { id?: number; photoUrl?: string };
 type PhotoReactions = { count?: number; likedByMe?: boolean };
-
-// ─── Animated heart burst ─────────────────────────────────────────────────────
 
 function HeartBurst({ visible }: { visible: boolean }) {
   const scale = useSharedValue(0);
@@ -75,27 +71,29 @@ function HeartBurst({ visible }: { visible: boolean }) {
   );
 }
 
-// ─── Per-photo zoomable component ────────────────────────────────────────────
-
 function ZoomablePhoto({
   uri,
+  width,
+  height,
   photoId,
   onZoomed,
+  onToggleChrome,
   onDoubleTapReact,
 }: {
   uri: string;
+  width: number;
+  height: number;
   photoId?: number;
   onZoomed: (zoomed: boolean) => void;
+  onToggleChrome: () => void;
   onDoubleTapReact?: (photoId: number) => void;
 }) {
   const [heartVisible, setHeartVisible] = useState(false);
-
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
 
   const triggerReact = useCallback(() => {
     if (!photoId || !onDoubleTapReact) return;
-    // Briefly toggle the heart animation
     setHeartVisible(false);
     requestAnimationFrame(() => setHeartVisible(true));
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -121,31 +119,35 @@ function ZoomablePhoto({
     .numberOfTaps(2)
     .onEnd(() => {
       if (scale.value > 1.05) {
-        // Zoomed in → reset zoom on double-tap
         scale.value = withSpring(1, { damping: 20, stiffness: 200 });
         savedScale.value = 1;
         runOnJS(onZoomed)(false);
       } else {
-        // Not zoomed → double-tap reacts (like)
         runOnJS(triggerReact)();
       }
     });
 
-  const composed = Gesture.Simultaneous(doubleTap, pinch);
+  const singleTap = Gesture.Tap()
+    .numberOfTaps(1)
+    .maxDuration(250)
+    .onEnd(() => {
+      runOnJS(onToggleChrome)();
+    });
 
+  const composed = Gesture.Exclusive(doubleTap, singleTap, pinch);
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
 
   return (
     <GestureDetector gesture={composed}>
-      <Animated.View style={[styles.photoSlide, animStyle]}>
+      <Animated.View style={[styles.photoSlide, { width, height }, animStyle]}>
         <Image
           source={{ uri }}
-          style={styles.photo}
+          style={[styles.photo, { width, height }]}
           contentFit="contain"
           transition={100}
-          recyclingKey={uri}
+          recyclingKey={`${uri}-${width}-${height}`}
         />
         <HeartBurst visible={heartVisible} />
       </Animated.View>
@@ -153,17 +155,17 @@ function ZoomablePhoto({
   );
 }
 
-// ─── Main lightbox screen ─────────────────────────────────────────────────────
-
 export default function GalleryPhotoViewer() {
   const router = useRouter();
-  const { albumId, startIndex } = useLocalSearchParams<{
-    albumId: string;
-    startIndex: string;
-  }>();
+  const { albumId, startIndex } = useLocalSearchParams<{ albumId: string; startIndex: string }>();
+  const { width, height } = useWindowDimensions();
+  const pageWidth = Math.max(1, Math.round(width));
+  const pageHeight = Math.max(1, Math.round(height));
+  const isLandscape = pageWidth > pageHeight;
 
   const [currentIndex, setCurrentIndex] = useState(Number(startIndex ?? 0));
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  const [chromeVisible, setChromeVisible] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [gifUrls, setGifUrls] = useState<string[]>([]);
   const [gifPickerOpen, setGifPickerOpen] = useState(false);
@@ -175,7 +177,6 @@ export default function GalleryPhotoViewer() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const commentInputRef = useRef<TextInput>(null);
 
-  // Re-use the already-cached album query — no extra network request
   const { data } = useQuery({
     queryKey: ['gallery-album', albumId],
     queryFn: () => getGalleryAlbum(String(albumId)),
@@ -184,11 +185,22 @@ export default function GalleryPhotoViewer() {
 
   const photos: Photo[] = (data as { photos?: Photo[] })?.photos ?? [];
   const items = photos
-    .map((p) => ({
-      id: p.id,
-      uri: resolveBackendUrl(p.photoUrl ?? null),
+    .map((photo) => ({
+      id: photo.id,
+      uri: resolveResponsiveImageUrl(
+        photo.photoUrl ?? null,
+        isLandscape ? { width: 1800, quality: 88 } : { width: 1400, quality: 84 },
+      ),
     }))
-    .filter((p): p is { id: number; uri: string } => Boolean(p.uri));
+    .filter((photo): photo is { id: number; uri: string } => Boolean(photo.uri));
+
+  useEffect(() => {
+    if (items.length === 0) {
+      setCurrentIndex(0);
+      return;
+    }
+    setCurrentIndex((index) => Math.min(index, items.length - 1));
+  }, [items.length]);
 
   const handleZoomed = useCallback((zoomed: boolean) => {
     setScrollEnabled(!zoomed);
@@ -265,12 +277,9 @@ export default function GalleryPhotoViewer() {
     try {
       const token = await getValidAccessToken();
       if (!token) return;
-      await postReactionToggle(token, {
-        entityType: 'gallery_photo',
-        entityId: String(photoId),
-      });
+      await postReactionToggle(token, { entityType: 'gallery_photo', entityId: String(photoId) });
     } catch {
-      // Silent — reaction is best-effort in the lightbox
+      // Best-effort only inside the lightbox.
     }
   }, [getValidAccessToken]);
 
@@ -287,55 +296,57 @@ export default function GalleryPhotoViewer() {
     viewAreaCoveragePercentThreshold: 50,
   }).current;
 
+  const visibleIndex = items.length > 0 ? Math.min(currentIndex, items.length - 1) : 0;
+
   return (
     <View style={styles.root}>
       <StatusBar hidden />
 
-      {/* Top overlay: close + counter */}
-      <View style={styles.topBar} pointerEvents="box-none">
-        <Pressable
-          onPress={() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            router.back();
-          }}
-          style={styles.iconBtn}
-          hitSlop={12}>
-          <Ionicons name="close" size={22} color="#fff" />
-        </Pressable>
+      {chromeVisible ? (
+        <View style={styles.topBar} pointerEvents="box-none">
+          <Pressable
+            onPress={() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              router.back();
+            }}
+            style={styles.iconBtn}
+            hitSlop={12}>
+            <Ionicons name="close" size={22} color="#fff" />
+          </Pressable>
 
-        {items.length > 1 ? (
-          <View style={styles.counterPill}>
-            <Text style={styles.counterText}>
-              {currentIndex + 1} / {items.length}
-            </Text>
-          </View>
-        ) : null}
+          {items.length > 1 ? (
+            <View style={styles.counterPill}>
+              <Text style={styles.counterText}>
+                {visibleIndex + 1} / {items.length}
+              </Text>
+            </View>
+          ) : null}
 
-        <Pressable
-          onPress={() => {
-            const uri = items[currentIndex]?.uri;
-            if (uri) void share(uri);
-          }}
-          disabled={sharing}
-          style={[styles.iconBtn, { opacity: sharing ? 0.5 : 1 }]}
-          hitSlop={12}>
-          {sharing ? (
-            <Ionicons name="hourglass-outline" size={20} color="#fff" />
-          ) : (
-            <Ionicons name="share-outline" size={20} color="#fff" />
-          )}
-        </Pressable>
-      </View>
-
-      {/* Hint for double-tap */}
-      {items.length > 0 ? (
-        <View style={styles.hintBar} pointerEvents="none">
-          <Text style={styles.hintText}>Double-tap to like  ·  Pinch to zoom</Text>
+          <Pressable
+            onPress={() => {
+              const uri = items[visibleIndex]?.uri;
+              if (uri) void share(uri);
+            }}
+            disabled={sharing}
+            style={[styles.iconBtn, { opacity: sharing ? 0.5 : 1 }]}
+            hitSlop={12}>
+            {sharing ? (
+              <Ionicons name="hourglass-outline" size={20} color="#fff" />
+            ) : (
+              <Ionicons name="share-outline" size={20} color="#fff" />
+            )}
+          </Pressable>
         </View>
       ) : null}
 
-      {currentPhoto ? (
-        <View style={styles.bottomOverlay}>
+      {items.length > 0 && chromeVisible ? (
+        <View style={[styles.hintBar, { bottom: Platform.OS === 'ios' ? (isLandscape ? 20 : 48) : 24 }]} pointerEvents="none">
+          <Text style={styles.hintText}>Tap to hide controls  ·  Double-tap to like  ·  Pinch to zoom</Text>
+        </View>
+      ) : null}
+
+      {currentPhoto && chromeVisible ? (
+        <View style={[styles.bottomOverlay, { bottom: Platform.OS === 'ios' ? (isLandscape ? 18 : 48) : 28 }]}>
           <View style={styles.bottomActions}>
             <Pressable onPress={() => reactionMutation.mutate()} style={[styles.bottomPill, { backgroundColor: photoReactions.likedByMe ? colors.accentSoft : 'rgba(0,0,0,0.55)', borderColor: photoReactions.likedByMe ? colors.accent : 'rgba(255,255,255,0.12)' }]}>
               <Ionicons name={photoReactions.likedByMe ? 'heart' : 'heart-outline'} size={16} color={photoReactions.likedByMe ? colors.accent : '#FFFFFF'} />
@@ -353,12 +364,12 @@ export default function GalleryPhotoViewer() {
           </View>
 
           {commentsOpen ? (
-            <View style={styles.commentsPanel}>
+            <View style={[styles.commentsPanel, { maxHeight: pageHeight * (isLandscape ? 0.55 : 0.42) }]}>
               <FlatList
                 data={comments}
                 keyExtractor={(item) => String(item.id)}
                 keyboardShouldPersistTaps="handled"
-                style={styles.commentsList}
+                style={[styles.commentsList, { maxHeight: pageHeight * (isLandscape ? 0.34 : 0.22) }]}
                 renderItem={({ item }) => {
                   const engagement = commentEngagementQuery.data?.[item.id] ?? { reactionCount: 0, likedByMe: false };
                   return (
@@ -395,18 +406,18 @@ export default function GalleryPhotoViewer() {
         </View>
       ) : null}
 
-      {/* Photo pager */}
       <FlatList
+        key={`${pageWidth}x${pageHeight}`}
         data={items}
         keyExtractor={(item) => String(item.id)}
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
-        initialScrollIndex={Number(startIndex ?? 0)}
+        initialScrollIndex={visibleIndex}
         getItemLayout={(_, index) => ({
-          length: SW,
-          offset: SW * index,
+          length: pageWidth,
+          offset: pageWidth * index,
           index,
         })}
         onViewableItemsChanged={onViewableItemsChanged}
@@ -414,8 +425,11 @@ export default function GalleryPhotoViewer() {
         renderItem={({ item }) => (
           <ZoomablePhoto
             uri={item.uri}
+            width={pageWidth}
+            height={pageHeight}
             photoId={item.id}
             onZoomed={handleZoomed}
+            onToggleChrome={() => setChromeVisible((visible) => !visible)}
             onDoubleTapReact={(id) => void handleReact(id)}
           />
         )}
@@ -463,7 +477,6 @@ const styles = StyleSheet.create({
   },
   hintBar: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? 48 : 24,
     left: 0,
     right: 0,
     zIndex: 10,
@@ -478,7 +491,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 12,
     right: 12,
-    bottom: Platform.OS === 'ios' ? 78 : 48,
     zIndex: 10,
     gap: 10,
   },
@@ -500,14 +512,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   commentsPanel: {
-    maxHeight: SH * 0.42,
     borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.72)',
     padding: 12,
     gap: 10,
   },
   commentsList: {
-    maxHeight: SH * 0.22,
+    maxHeight: 220,
   },
   commentCard: {
     paddingVertical: 8,
@@ -518,7 +529,7 @@ const styles = StyleSheet.create({
   commentAuthor: {
     color: '#FFFFFF',
     fontFamily: Fonts.rounded,
-    fontSize: 14,
+    fontSize: 13,
   },
   commentLikeRow: {
     flexDirection: 'row',
@@ -555,14 +566,11 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   photoSlide: {
-    width: SW,
-    height: SH,
     alignItems: 'center',
     justifyContent: 'center',
   },
   photo: {
-    width: SW,
-    height: SH,
+    backgroundColor: '#000',
   },
   heartBurst: {
     position: 'absolute',
