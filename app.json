@@ -29,6 +29,10 @@
       "blockedPermissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO"
+      ],
+      "permissions": [
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT"
       ]
     },
     "web": {
@@ -69,6 +73,12 @@
       "eas": {
         "projectId": "c6428a1d-216a-43e4-a874-7c5028edb863"
       }
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/c6428a1d-216a-43e4-a874-7c5028edb863"
     }
   }
 }
