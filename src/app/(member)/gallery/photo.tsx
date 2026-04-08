@@ -157,11 +157,13 @@ function ZoomablePhoto({
 
 export default function GalleryPhotoViewer() {
   const router = useRouter();
-  const { albumId, startIndex } = useLocalSearchParams<{ albumId: string; startIndex: string }>();
+  const { albumId, startIndex, photoId } = useLocalSearchParams<{ albumId: string; startIndex: string; photoId?: string }>();
   const { width, height } = useWindowDimensions();
   const pageWidth = Math.max(1, Math.round(width));
   const pageHeight = Math.max(1, Math.round(height));
   const isLandscape = pageWidth > pageHeight;
+  const listRef = useRef<FlatList<{ id: number; uri: string }> | null>(null);
+  const initialScrollDoneRef = useRef(false);
 
   const [currentIndex, setCurrentIndex] = useState(Number(startIndex ?? 0));
   const [scrollEnabled, setScrollEnabled] = useState(true);
@@ -184,23 +186,59 @@ export default function GalleryPhotoViewer() {
   });
 
   const photos: Photo[] = (data as { photos?: Photo[] })?.photos ?? [];
-  const items = photos
-    .map((photo) => ({
-      id: photo.id,
-      uri: resolveResponsiveImageUrl(
-        photo.photoUrl ?? null,
-        isLandscape ? { width: 1800, quality: 88 } : { width: 1400, quality: 84 },
-      ),
-    }))
-    .filter((photo): photo is { id: number; uri: string } => Boolean(photo.uri));
+  const items = useMemo(
+    () =>
+      photos
+        .map((photo) => ({
+          id: Number(photo.id ?? 0),
+          uri:
+            resolveResponsiveImageUrl(
+              photo.photoUrl ?? null,
+              isLandscape ? { width: 1800, quality: 88 } : { width: 1400, quality: 84 },
+            ) ?? '',
+        }))
+        .filter((photo): photo is { id: number; uri: string } => Number.isFinite(photo.id) && photo.id > 0 && Boolean(photo.uri)),
+    [isLandscape, photos],
+  );
+  const requestedPhotoId = Number(photoId ?? 0);
+  const requestedIndex = useMemo(() => {
+    if (items.length === 0) return 0;
+    if (Number.isFinite(requestedPhotoId) && requestedPhotoId > 0) {
+      const matchedIndex = items.findIndex((item) => item.id === requestedPhotoId);
+      if (matchedIndex >= 0) return matchedIndex;
+    }
+    const parsedIndex = Number(startIndex ?? 0);
+    if (!Number.isFinite(parsedIndex)) return 0;
+    return Math.max(0, Math.min(parsedIndex, items.length - 1));
+  }, [items, photoId, requestedPhotoId, startIndex]);
+
+  useEffect(() => {
+    initialScrollDoneRef.current = false;
+  }, [albumId]);
 
   useEffect(() => {
     if (items.length === 0) {
       setCurrentIndex(0);
+      initialScrollDoneRef.current = false;
       return;
     }
-    setCurrentIndex((index) => Math.min(index, items.length - 1));
-  }, [items.length]);
+
+    setCurrentIndex(requestedIndex);
+
+    if (initialScrollDoneRef.current) {
+      return;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      listRef.current?.scrollToIndex({
+        index: requestedIndex,
+        animated: false,
+      });
+      initialScrollDoneRef.current = true;
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [items.length, requestedIndex]);
 
   const handleZoomed = useCallback((zoomed: boolean) => {
     setScrollEnabled(!zoomed);
@@ -407,6 +445,7 @@ export default function GalleryPhotoViewer() {
       ) : null}
 
       <FlatList
+        ref={listRef}
         key={`${pageWidth}x${pageHeight}`}
         data={items}
         keyExtractor={(item) => String(item.id)}
@@ -414,12 +453,20 @@ export default function GalleryPhotoViewer() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         scrollEnabled={scrollEnabled}
-        initialScrollIndex={visibleIndex}
         getItemLayout={(_, index) => ({
           length: pageWidth,
           offset: pageWidth * index,
           index,
         })}
+        onScrollToIndexFailed={(info) => {
+          const safeIndex = Math.max(0, Math.min(info.index, items.length - 1));
+          requestAnimationFrame(() => {
+            listRef.current?.scrollToOffset({
+              offset: safeIndex * pageWidth,
+              animated: false,
+            });
+          });
+        }}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         renderItem={({ item }) => (

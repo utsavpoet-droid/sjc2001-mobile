@@ -23,6 +23,7 @@ type AlbumDetail = {
   photos?: Array<{ id?: number; photoUrl?: string }>;
 };
 type AlbumReactions = { count?: number; likedByMe?: boolean };
+type GalleryPhotoItem = { id: number; uri: string };
 
 export default function GalleryDetailScreen() {
   const { id, focusComments } = useLocalSearchParams<{ id: string; focusComments?: string }>();
@@ -53,6 +54,12 @@ export default function GalleryDetailScreen() {
 
   const album = (query.data ?? {}) as AlbumDetail;
   const albumReactions = (albumReactionsQuery.data ?? {}) as AlbumReactions;
+  const galleryItems: GalleryPhotoItem[] = (album.photos ?? [])
+    .map((photo) => ({
+      id: Number(photo.id ?? 0),
+      uri: resolveResponsiveImageUrl(photo.photoUrl ?? null, { width: 900, quality: 76 }) ?? '',
+    }))
+    .filter((photo): photo is GalleryPhotoItem => Number.isFinite(photo.id) && photo.id > 0 && Boolean(photo.uri));
   const comments =
     albumCommentsQuery.data && typeof albumCommentsQuery.data === 'object' && 'comments' in albumCommentsQuery.data
       ? ((albumCommentsQuery.data as { comments?: Array<{ id: number; body: string; author?: { name?: string } }> }).comments ?? [])
@@ -62,7 +69,7 @@ export default function GalleryDetailScreen() {
     queryFn: () => getBulkEngagement('comment', comments.map((comment) => String(comment.id)), accessToken),
     enabled: comments.length > 0,
   });
-  const photoIds = (album.photos ?? []).map((photo) => String(photo.id ?? '')).filter(Boolean);
+  const photoIds = galleryItems.map((photo) => String(photo.id));
   const photoEngagementQuery = useQuery({
     queryKey: ['gallery-photo-engagement', id, photoIds.join(','), accessToken],
     queryFn: () => getBulkEngagement('gallery_photo', photoIds, accessToken),
@@ -155,24 +162,22 @@ export default function GalleryDetailScreen() {
       </Card>
 
       <View style={styles.grid}>
-        {(album.photos ?? []).map((photo, index) => {
-          const uri = resolveResponsiveImageUrl(photo.photoUrl ?? null, { width: 900, quality: 76 });
-          const engagement = photoEngagementQuery.data?.[Number(photo.id ?? 0)] ?? { reactionCount: 0, commentCount: 0 };
+        {galleryItems.map((photo, index) => {
+          const engagement = photoEngagementQuery.data?.[photo.id] ?? { reactionCount: 0, commentCount: 0 };
           return (
             <Pressable
               key={String(photo.id)}
               onPress={() => {
-                if (!uri) return;
                 void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 router.push(
-                  `/(member)/gallery/photo?albumId=${id}&startIndex=${index}` as never,
+                  `/(member)/gallery/photo?albumId=${id}&startIndex=${index}&photoId=${photo.id}` as never,
                 );
               }}
               style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
               <Card style={[styles.photoCard, { backgroundColor: colors.surface }]}>
-                {uri ? (
+                {photo.uri ? (
                   <View style={[styles.photoFrame, { backgroundColor: colors.backgroundSoft }]}>
-                    <Image source={{ uri }} style={styles.photo} resizeMode="contain" />
+                    <Image source={{ uri: photo.uri }} style={styles.photo} resizeMode="contain" />
                     <View style={styles.photoStatsRow}>
                       <View style={styles.photoStatPill}>
                         <Ionicons name="heart-outline" size={12} color="#FFFFFF" />
@@ -191,7 +196,7 @@ export default function GalleryDetailScreen() {
             </Pressable>
           );
         })}
-        {(album.photos ?? []).length === 0 ? (
+        {galleryItems.length === 0 ? (
           <Card>
             <Text style={[styles.photoFallback, { color: colors.textSecondary }]}>No photos in this album yet.</Text>
           </Card>
