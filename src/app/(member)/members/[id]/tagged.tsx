@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { router, useGlobalSearchParams, type Href } from 'expo-router';
+import { useGlobalSearchParams } from 'expo-router';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -54,12 +54,6 @@ export default function MemberTaggedPhotosScreen() {
         title="Moments featuring this batchmate"
         subtitle={`${tagged.summary.photoCount ?? 0} photos across ${tagged.summary.albumCount ?? 0} albums`}
       />
-      <Pressable
-        onPress={() => router.push(`/(member)/members/${id}/avatars` as Href)}
-        style={({ pressed }) => [styles.secondaryLink, { opacity: pressed ? 0.75 : 1, borderColor: colors.border, backgroundColor: colors.surface }]}>
-        <Text style={[styles.secondaryLinkText, { color: colors.text }]}>View member avatars</Text>
-      </Pressable>
-
       {taggedQuery.isLoading ? <ActivityIndicator color={colors.accent} /> : null}
 
       <View style={styles.grid}>
@@ -110,16 +104,5 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 22,
-  },
-  secondaryLink: {
-    borderWidth: 1,
-    borderRadius: 18,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    alignSelf: 'flex-start',
-  },
-  secondaryLinkText: {
-    fontFamily: Fonts.rounded,
-    fontSize: 14,
   },
 });

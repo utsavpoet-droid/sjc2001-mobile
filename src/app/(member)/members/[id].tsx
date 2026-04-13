@@ -28,7 +28,6 @@ import {
   getBulkEngagement,
   getComments,
   getMember,
-  getMemberAvatars,
   getMemberTaggedPhotos,
   getReactions,
   postComment,
@@ -51,10 +50,6 @@ type ThemeColors = (typeof Colors)[keyof typeof Colors];
 type TaggedPhotosResponse = {
   summary?: { photoCount?: number; albumCount?: number };
   photos?: Array<{ photoId: number; photoUrl: string; albumTitle?: string | null; albumId?: number }>;
-};
-type AvatarResponse = {
-  summary?: { avatarCount?: number; taggedAvatarCount?: number };
-  avatars?: Array<{ id: string; imageUrl?: string | null }>;
 };
 type ReactionsResponse = { count?: number; likedByMe?: boolean };
 
@@ -241,10 +236,6 @@ export default function MemberDetailScreen() {
     queryKey: ['member-tagged-photos', id],
     queryFn: () => getMemberTaggedPhotos(String(id)),
   });
-  const avatarsQuery = useQuery({
-    queryKey: ['member-avatars', id],
-    queryFn: () => getMemberAvatars(String(id)),
-  });
 
   const memberProfileQuery = useQuery({
     queryKey: ['member-profile-by-member', id],
@@ -311,13 +302,6 @@ export default function MemberDetailScreen() {
   const tappableTaggedUris = taggedPhotos
     .map((p) => p.resolvedUrl)
     .filter((u): u is string => Boolean(u));
-  const avatarsData = (avatarsQuery.data ?? {}) as AvatarResponse;
-  const avatars = (avatarsData.avatars ?? [])
-    .map((avatar) => ({
-      ...avatar,
-      resolvedUrl: resolveBackendUrl(avatar.imageUrl ?? null),
-    }))
-    .filter((avatar): avatar is { id: string; resolvedUrl: string } => Boolean(avatar.resolvedUrl));
   const hasExtendedProfile = memberProfileHasContent(memberProfileQuery.data);
 
   if (memberQuery.isLoading) {
@@ -406,12 +390,6 @@ export default function MemberDetailScreen() {
             label="Tagged"
             count={taggedSummary.photoCount ?? 0}
             onPress={() => router.push(`/(member)/members/${id}/tagged` as Href)}
-          />
-          <ActionStat
-            icon="person-circle-outline"
-            label="Avatars"
-            count={avatarsData.summary?.avatarCount ?? 0}
-            onPress={() => router.push(`/(member)/members/${id}/avatars` as Href)}
           />
         </View>
       </View>
@@ -527,33 +505,6 @@ export default function MemberDetailScreen() {
                 </Pressable>
               ) : null,
             )}
-          </ScrollView>
-        </View>
-      ) : null}
-
-      {avatars.length > 0 ? (
-        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.taggedHeader}>
-            <Text style={[styles.infoHeading, { color: colors.text }]}>Avatars</Text>
-            <Pressable
-              onPress={() => router.push(`/(member)/members/${id}/avatars` as Href)}
-              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
-              <Text style={[styles.viewAllLink, { color: colors.accent }]}>
-                View all ({avatarsData.summary?.avatarCount ?? avatars.length})
-              </Text>
-            </Pressable>
-          </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.taggedScroll}>
-            {avatars.slice(0, 10).map((avatar) => (
-              <View key={avatar.id} style={styles.taggedThumb}>
-                <Image
-                  source={{ uri: avatar.resolvedUrl }}
-                  style={styles.taggedThumbImg}
-                  contentFit="cover"
-                  recyclingKey={avatar.resolvedUrl}
-                />
-              </View>
-            ))}
           </ScrollView>
         </View>
       ) : null}
