@@ -26,7 +26,14 @@ export type MemberProfile = {
   title?: string | null;
   comments?: string | null;
   schoolPhotoUrl?: string | null;
+  schoolPhotoFocalX?: number | null;
+  schoolPhotoFocalY?: number | null;
   currentPhotoUrl?: string | null;
+  currentPhotoFocalX?: number | null;
+  currentPhotoFocalY?: number | null;
+  contactPhotoUrl?: string | null;
+  contactPhotoFocalX?: number | null;
+  contactPhotoFocalY?: number | null;
   familyPhotos: Array<{ photoUrl: string; sortOrder?: number }>;
 };
 
@@ -124,7 +131,14 @@ export async function putMemberProfile(
     title?: string;
     comments?: string;
     schoolPhotoUrl?: string;
+    schoolPhotoFocalX?: number;
+    schoolPhotoFocalY?: number;
     currentPhotoUrl?: string;
+    currentPhotoFocalX?: number;
+    currentPhotoFocalY?: number;
+    contactPhotoUrl?: string;
+    contactPhotoFocalX?: number;
+    contactPhotoFocalY?: number;
     familyPhotos?: string[];
   },
 ) {

@@ -5,6 +5,7 @@ import {
   Image,
   Pressable,
   StyleSheet,
+  type ImageStyle,
   type StyleProp,
   Text,
   TextInput,
@@ -120,13 +121,130 @@ export const Input = React.forwardRef<TextInput, TextInputProps>(function Input(
   );
 });
 
+export function FocalImage({
+  uri,
+  focalX = 50,
+  focalY = 50,
+  width,
+  height,
+  borderRadius = 0,
+  style,
+  imageStyle,
+  fallback,
+  onError,
+  onSourceSize,
+}: {
+  uri: string;
+  focalX?: number;
+  focalY?: number;
+  width: number;
+  height: number;
+  borderRadius?: number;
+  style?: StyleProp<ViewStyle>;
+  imageStyle?: StyleProp<ImageStyle>;
+  fallback?: React.ReactNode;
+  onError?: () => void;
+  onSourceSize?: (width: number, height: number) => void;
+}) {
+  const [sourceSize, setSourceSize] = React.useState<{ width: number; height: number } | null>(null);
+  const [failed, setFailed] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!uri) {
+      setSourceSize(null);
+      setFailed(false);
+      return;
+    }
+
+    let active = true;
+    setFailed(false);
+    setSourceSize(null);
+
+    Image.getSize(
+      uri,
+      (imgWidth, imgHeight) => {
+        if (!active) return;
+        setSourceSize({ width: imgWidth, height: imgHeight });
+        onSourceSize?.(imgWidth, imgHeight);
+      },
+      () => {
+        if (!active) return;
+        setFailed(true);
+        onError?.();
+      },
+    );
+
+    return () => {
+      active = false;
+    };
+  }, [onError, onSourceSize, uri]);
+
+  const frameWidth = Math.max(1, width);
+  const frameHeight = Math.max(1, height);
+  const coverSize = sourceSize
+    ? (() => {
+        const scale = Math.max(frameWidth / sourceSize.width, frameHeight / sourceSize.height);
+        const renderedWidth = sourceSize.width * scale;
+        const renderedHeight = sourceSize.height * scale;
+        const requestedLeft = frameWidth / 2 - (focalX / 100) * renderedWidth;
+        const requestedTop = frameHeight / 2 - (focalY / 100) * renderedHeight;
+        const minLeft = Math.min(0, frameWidth - renderedWidth);
+        const minTop = Math.min(0, frameHeight - renderedHeight);
+
+        return {
+          width: renderedWidth,
+          height: renderedHeight,
+          left: Math.max(minLeft, Math.min(0, requestedLeft)),
+          top: Math.max(minTop, Math.min(0, requestedTop)),
+        };
+      })()
+    : null;
+
+  return (
+    <View
+      style={[
+        {
+          width,
+          height,
+          borderRadius,
+          overflow: 'hidden',
+        },
+        style,
+      ]}>
+      {failed ? (
+        fallback ?? null
+      ) : coverSize ? (
+        <Image
+          source={{ uri }}
+          style={[
+            {
+              position: 'absolute',
+              left: coverSize.left,
+              top: coverSize.top,
+              width: coverSize.width,
+              height: coverSize.height,
+            },
+            imageStyle,
+          ]}
+        />
+      ) : (
+        <View style={{ flex: 1 }} />
+      )}
+    </View>
+  );
+}
+
 export function Avatar({
   name,
   uri,
+  focalX = 50,
+  focalY = 50,
   size = 48,
 }: {
   name: string;
   uri?: string | null;
+  focalX?: number;
+  focalY?: number;
   size?: number;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
@@ -139,15 +257,14 @@ export function Avatar({
 
   if (uri) {
     return (
-      <Image
-        source={{ uri }}
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: colors.surfaceMuted,
-        }}
-        resizeMode="cover"
+      <FocalImage
+        uri={uri}
+        focalX={focalX}
+        focalY={focalY}
+        width={size}
+        height={size}
+        borderRadius={size / 2}
+        style={{ backgroundColor: colors.surfaceMuted }}
       />
     );
   }

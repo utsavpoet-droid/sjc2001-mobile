@@ -1,12 +1,12 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
-import { Image } from 'expo-image';
 import { router } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  LayoutChangeEvent,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 
 import { BackLink } from '@/components/ui/back-link';
-import { Card, Input, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
+import { Card, FocalImage, Input, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
@@ -22,23 +22,71 @@ import { postUploadMultipart } from '@/features/content/api';
 import { getMemberProfile, putMemberProfile } from '@/features/member/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
+import { reportMobileError } from '@/lib/error-logging';
 
 // ─── Photo picker card ────────────────────────────────────────────────────────
+
+function clampFocal(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
 
 function PhotoPickerCard({
   label,
   uri,
+  focalX = 50,
+  focalY = 50,
   onPicked,
+  onFocalChange,
 }: {
   label: string;
   uri: string;
+  focalX?: number;
+  focalY?: number;
   onPicked: (url: string) => void;
+  onFocalChange?: (x: number, y: number) => void;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [uploading, setUploading] = useState(false);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [frameSize, setFrameSize] = useState({ width: 0, height: 0 });
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const user = useAuthStore((state) => state.user);
 
   const resolved = resolveBackendUrl(uri) ?? null;
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [resolved]);
+
+  function logEditProfileImageError(failedUri: string) {
+    void reportMobileError({
+      source: 'mobile-image',
+      screen: 'profile-edit',
+      component: `photo-picker-${label.toLowerCase().replace(/\s+/g, '-')}`,
+      message: 'Failed to load profile edit image preview',
+      metadata: {
+        uri: failedUri,
+        label,
+        profileMemberId: String(user?.memberId ?? ''),
+        profileName: user?.name ?? null,
+      },
+    });
+  }
+
+  function handleFrameLayout(event: LayoutChangeEvent) {
+    const { width, height } = event.nativeEvent.layout;
+    if (width !== frameSize.width || height !== frameSize.height) {
+      setFrameSize({ width, height });
+    }
+  }
+
+  function updateFocal(locationX: number, locationY: number) {
+    if (!onFocalChange || frameSize.width <= 0 || frameSize.height <= 0) return;
+    onFocalChange(
+      clampFocal((locationX / frameSize.width) * 100),
+      clampFocal((locationY / frameSize.height) * 100),
+    );
+  }
 
   async function pick() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -68,6 +116,8 @@ function PhotoPickerCard({
         fileName,
         mimeType,
       });
+      onFocalChange?.(50, 50);
+      setPreviewFailed(false);
       onPicked(url);
     } catch (err) {
       Alert.alert('Upload failed', err instanceof Error ? err.message : 'Try again.');
@@ -87,14 +137,53 @@ function PhotoPickerCard({
           borderColor: colors.border,
           opacity: pressed ? 0.82 : 1,
         },
-      ]}>
+      ]}
+      onLayout={handleFrameLayout}
+      onStartShouldSetResponder={() => Boolean(resolved && onFocalChange)}
+      onMoveShouldSetResponder={() => Boolean(resolved && onFocalChange)}
+      onResponderGrant={(event) => {
+        updateFocal(event.nativeEvent.locationX, event.nativeEvent.locationY);
+      }}
+      onResponderMove={(event) => {
+        updateFocal(event.nativeEvent.locationX, event.nativeEvent.locationY);
+      }}>
       {resolved ? (
-        <Image
-          source={{ uri: resolved }}
-          style={styles.pickerPreview}
-          contentFit="cover"
-          recyclingKey={resolved}
-        />
+        <>
+          <FocalImage
+            uri={resolved}
+            focalX={focalX}
+            focalY={focalY}
+            width={frameSize.width || 1}
+            height={frameSize.height || 1}
+            style={styles.pickerPreview}
+            fallback={
+              <View style={[styles.pickerPreview, styles.pickerErrorState, { backgroundColor: '#FEF3C7' }]}>
+                <Text style={styles.pickerErrorText}>Photo failed to load</Text>
+              </View>
+            }
+            onError={() => {
+              setPreviewFailed(true);
+              logEditProfileImageError(resolved);
+            }}
+          />
+          {!previewFailed && onFocalChange ? (
+            <>
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.focusMarker,
+                  {
+                    left: `${focalX}%`,
+                    top: `${focalY}%`,
+                  },
+                ]}
+              />
+              <View pointerEvents="none" style={styles.dragHint}>
+                <Text style={styles.dragHintText}>Drag to adjust framing</Text>
+              </View>
+            </>
+          ) : null}
+        </>
       ) : (
         <View style={[styles.pickerEmpty, { borderColor: colors.border }]}>
           <Ionicons name="image-outline" size={32} color={colors.textMuted} />
@@ -135,7 +224,11 @@ export default function EditProfileScreen() {
   const [title, setTitle] = useState('');
   const [comments, setComments] = useState('');
   const [schoolPhotoUrl, setSchoolPhotoUrl] = useState('');
+  const [schoolPhotoFocalX, setSchoolPhotoFocalX] = useState(50);
+  const [schoolPhotoFocalY, setSchoolPhotoFocalY] = useState(50);
   const [currentPhotoUrl, setCurrentPhotoUrl] = useState('');
+  const [currentPhotoFocalX, setCurrentPhotoFocalX] = useState(50);
+  const [currentPhotoFocalY, setCurrentPhotoFocalY] = useState(50);
   const [familyPhoto1, setFamilyPhoto1] = useState('');
   const [familyPhoto2, setFamilyPhoto2] = useState('');
   const [familyPhoto3, setFamilyPhoto3] = useState('');
@@ -145,7 +238,11 @@ export default function EditProfileScreen() {
     setTitle(profileQuery.data.title ?? '');
     setComments(profileQuery.data.comments ?? '');
     setSchoolPhotoUrl(profileQuery.data.schoolPhotoUrl ?? '');
+    setSchoolPhotoFocalX(profileQuery.data.schoolPhotoFocalX ?? 50);
+    setSchoolPhotoFocalY(profileQuery.data.schoolPhotoFocalY ?? 50);
     setCurrentPhotoUrl(profileQuery.data.currentPhotoUrl ?? '');
+    setCurrentPhotoFocalX(profileQuery.data.currentPhotoFocalX ?? 50);
+    setCurrentPhotoFocalY(profileQuery.data.currentPhotoFocalY ?? 50);
     setFamilyPhoto1(profileQuery.data.familyPhotos?.[0]?.photoUrl ?? '');
     setFamilyPhoto2(profileQuery.data.familyPhotos?.[1]?.photoUrl ?? '');
     setFamilyPhoto3(profileQuery.data.familyPhotos?.[2]?.photoUrl ?? '');
@@ -165,7 +262,11 @@ export default function EditProfileScreen() {
         title,
         comments,
         schoolPhotoUrl,
+        schoolPhotoFocalX,
+        schoolPhotoFocalY,
         currentPhotoUrl,
+        currentPhotoFocalX,
+        currentPhotoFocalY,
         familyPhotos,
       });
     },
@@ -214,14 +315,27 @@ export default function EditProfileScreen() {
           <PhotoPickerCard
             label="School photo"
             uri={schoolPhotoUrl}
+            focalX={schoolPhotoFocalX}
+            focalY={schoolPhotoFocalY}
             onPicked={setSchoolPhotoUrl}
+            onFocalChange={(x, y) => {
+              setSchoolPhotoFocalX(x);
+              setSchoolPhotoFocalY(y);
+            }}
           />
           <PhotoPickerCard
             label="Current photo"
             uri={currentPhotoUrl}
+            focalX={currentPhotoFocalX}
+            focalY={currentPhotoFocalY}
             onPicked={setCurrentPhotoUrl}
+            onFocalChange={(x, y) => {
+              setCurrentPhotoFocalX(x);
+              setCurrentPhotoFocalY(y);
+            }}
           />
         </View>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>Drag the marker until the face sits where you want it cropped.</Text>
       </Card>
 
       {/* Family photos section */}
@@ -302,6 +416,16 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  pickerErrorState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickerErrorText: {
+    color: '#92400E',
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+    textTransform: 'uppercase',
+  },
   pickerEmpty: {
     width: '100%',
     height: '100%',
@@ -321,6 +445,36 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 10,
     backgroundColor: 'rgba(0,0,0,0.38)',
+  },
+  focusMarker: {
+    position: 'absolute',
+    width: 26,
+    height: 26,
+    marginLeft: -13,
+    marginTop: -13,
+    borderRadius: 13,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    backgroundColor: 'rgba(15,23,42,0.3)',
+    shadowColor: '#000000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 4,
+  },
+  dragHint: {
+    position: 'absolute',
+    left: 10,
+    bottom: 40,
+    backgroundColor: 'rgba(0,0,0,0.48)',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  dragHintText: {
+    color: '#FFFFFF',
+    fontFamily: Fonts.sans,
+    fontSize: 10,
   },
   pickerLabel: {
     fontFamily: Fonts.sans,

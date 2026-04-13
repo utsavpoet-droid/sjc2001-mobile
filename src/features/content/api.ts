@@ -155,6 +155,11 @@ export async function getMemberTaggedPhotos(memberId: string) {
   return requestContentJson<unknown>(`${API_MEMBERS}/${id}/photos`, { method: 'GET' });
 }
 
+export async function getMemberAvatars(memberId: string) {
+  const id = encodeURIComponent(memberId.trim());
+  return requestContentJson<unknown>(`${API_MEMBERS}/${id}/avatars`, { method: 'GET' });
+}
+
 export async function getBulkEngagement(
   entityType: ReactionEntityType,
   ids: string[],

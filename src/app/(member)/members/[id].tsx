@@ -20,7 +20,7 @@ import {
 
 import { BackLink } from '@/components/ui/back-link';
 import { GifPicker } from '@/components/content/gif-picker';
-import { GhostButton, Input, PrimaryButton } from '@/components/ui/primitives';
+import { FocalImage, GhostButton, Input, PrimaryButton } from '@/components/ui/primitives';
 import { RichBody } from '@/components/content/rich-body';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
@@ -28,6 +28,7 @@ import {
   getBulkEngagement,
   getComments,
   getMember,
+  getMemberAvatars,
   getMemberTaggedPhotos,
   getReactions,
   postComment,
@@ -50,6 +51,10 @@ type ThemeColors = (typeof Colors)[keyof typeof Colors];
 type TaggedPhotosResponse = {
   summary?: { photoCount?: number; albumCount?: number };
   photos?: Array<{ photoId: number; photoUrl: string; albumTitle?: string | null; albumId?: number }>;
+};
+type AvatarResponse = {
+  summary?: { avatarCount?: number; taggedAvatarCount?: number };
+  avatars?: Array<{ id: string; imageUrl?: string | null }>;
 };
 type ReactionsResponse = { count?: number; likedByMe?: boolean };
 
@@ -236,6 +241,10 @@ export default function MemberDetailScreen() {
     queryKey: ['member-tagged-photos', id],
     queryFn: () => getMemberTaggedPhotos(String(id)),
   });
+  const avatarsQuery = useQuery({
+    queryKey: ['member-avatars', id],
+    queryFn: () => getMemberAvatars(String(id)),
+  });
 
   const memberProfileQuery = useQuery({
     queryKey: ['member-profile-by-member', id],
@@ -292,7 +301,7 @@ export default function MemberDetailScreen() {
 
   const member = mapMemberDetailFromWire((memberQuery.data ?? {}) as Record<string, unknown>);
   const contribution = formatContribution(member.contributionAmount);
-  const heroPhoto = member.photo_urls[0] ?? member.avatar_url ?? null;
+  const heroPhoto = resolveBackendUrl(member.photo_urls[0] ?? member.avatar_url ?? null);
   const reactions = (reactionsQuery.data ?? {}) as ReactionsResponse;
   const taggedPhotos = (((taggedPhotosQuery.data ?? {}) as TaggedPhotosResponse).photos ?? []).map((p) => ({
     ...p,
@@ -302,6 +311,13 @@ export default function MemberDetailScreen() {
   const tappableTaggedUris = taggedPhotos
     .map((p) => p.resolvedUrl)
     .filter((u): u is string => Boolean(u));
+  const avatarsData = (avatarsQuery.data ?? {}) as AvatarResponse;
+  const avatars = (avatarsData.avatars ?? [])
+    .map((avatar) => ({
+      ...avatar,
+      resolvedUrl: resolveBackendUrl(avatar.imageUrl ?? null),
+    }))
+    .filter((avatar): avatar is { id: string; resolvedUrl: string } => Boolean(avatar.resolvedUrl));
   const hasExtendedProfile = memberProfileHasContent(memberProfileQuery.data);
 
   if (memberQuery.isLoading) {
@@ -320,16 +336,28 @@ export default function MemberDetailScreen() {
       <View style={styles.heroCard}>
         {/* Photo or gradient fallback */}
         {heroPhoto ? (
-          <Image
-            source={{ uri: heroPhoto }}
+          <FocalImage
+            uri={heroPhoto}
+            focalX={member.avatar_focal_x ?? 50}
+            focalY={member.avatar_focal_y ?? 50}
+            width={PHOTO_WIDTH}
+            height={heroHeight}
             style={[styles.heroPhoto, { height: heroHeight }]}
-            contentFit="cover"
-            onLoad={(e) => {
-              const { width: w, height: h } = e.source;
+            onSourceSize={(w, h) => {
               if (w > 0 && h > 0) {
                 setHeroHeight(Math.min(PHOTO_WIDTH * (h / w), MAX_HERO_HEIGHT));
               }
             }}
+            fallback={
+              <LinearGradient
+                colors={['#1C0F07', '#4A2010']}
+                style={[styles.heroPhoto, { height: heroHeight, alignItems: 'center', justifyContent: 'center' }]}>
+                <Text style={styles.heroInitials}>{initials(member.display_name || '?')}</Text>
+                <View style={styles.heroFallbackBadge}>
+                  <Text style={styles.heroFallbackText}>Photo unavailable</Text>
+                </View>
+              </LinearGradient>
+            }
           />
         ) : (
           <LinearGradient
@@ -378,6 +406,12 @@ export default function MemberDetailScreen() {
             label="Tagged"
             count={taggedSummary.photoCount ?? 0}
             onPress={() => router.push(`/(member)/members/${id}/tagged` as Href)}
+          />
+          <ActionStat
+            icon="person-circle-outline"
+            label="Avatars"
+            count={avatarsData.summary?.avatarCount ?? 0}
+            onPress={() => router.push(`/(member)/members/${id}/avatars` as Href)}
           />
         </View>
       </View>
@@ -497,6 +531,33 @@ export default function MemberDetailScreen() {
         </View>
       ) : null}
 
+      {avatars.length > 0 ? (
+        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={styles.taggedHeader}>
+            <Text style={[styles.infoHeading, { color: colors.text }]}>Avatars</Text>
+            <Pressable
+              onPress={() => router.push(`/(member)/members/${id}/avatars` as Href)}
+              style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1 })}>
+              <Text style={[styles.viewAllLink, { color: colors.accent }]}>
+                View all ({avatarsData.summary?.avatarCount ?? avatars.length})
+              </Text>
+            </Pressable>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.taggedScroll}>
+            {avatars.slice(0, 10).map((avatar) => (
+              <View key={avatar.id} style={styles.taggedThumb}>
+                <Image
+                  source={{ uri: avatar.resolvedUrl }}
+                  style={styles.taggedThumbImg}
+                  contentFit="cover"
+                  recyclingKey={avatar.resolvedUrl}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+
       {/* ── COMMENTS ─────────────────────────────────────────────── */}
       {comments.length > 0 ? (
         <View style={styles.commentStack}>
@@ -574,6 +635,20 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.rounded,
     fontSize: 64,
     opacity: 0.4,
+  },
+  heroFallbackBadge: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(10,5,2,0.65)',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  heroFallbackText: {
+    color: '#FFF7F1',
+    fontFamily: Fonts.sans,
+    fontSize: 11,
   },
   heroOverlay: {
     position: 'absolute',

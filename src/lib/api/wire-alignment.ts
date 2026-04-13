@@ -99,6 +99,8 @@ export type MemberSummaryNormalized = {
   id: string;
   display_name: string;
   avatar_url: string | null | undefined;
+  avatar_focal_x?: number;
+  avatar_focal_y?: number;
   city?: string;
   country?: string;
   location_label?: string;
@@ -116,6 +118,8 @@ export function mapMemberSummaryFromWire(w: MemberListWire): MemberSummaryNormal
     avatar_url: maybeResolveUrl(
       w.avatar_url ?? w.avatarUrl ?? w.photoUrl ?? avatarFromPhoto ?? null,
     ),
+    avatar_focal_x: typeof w.avatarFocalX === 'number' ? w.avatarFocalX : 50,
+    avatar_focal_y: typeof w.avatarFocalY === 'number' ? w.avatarFocalY : 50,
     city,
     country,
     location_label: [city, country].filter(Boolean).join(', '),
@@ -130,6 +134,8 @@ export function mapMemberDetailFromWire(w: MemberListWire): MemberSummaryNormali
   isJoining?: boolean;
   contributionAmount?: string;
   photo_urls: string[];
+  avatar_focal_x?: number;
+  avatar_focal_y?: number;
 } {
   const base = mapMemberSummaryFromWire(w);
   const comments = w.comments;
@@ -155,6 +161,8 @@ export function mapMemberDetailFromWire(w: MemberListWire): MemberSummaryNormali
         ? undefined
         : String(w.contributionAmount),
     photo_urls,
+    avatar_focal_x: base.avatar_focal_x,
+    avatar_focal_y: base.avatar_focal_y,
   };
 }
 

@@ -439,7 +439,13 @@ export default function MembersScreen() {
                   ]}>
                   <View style={styles.memberHeaderRow}>
                     <View style={styles.memberTopRow}>
-                      <Avatar name={member.display_name} uri={member.avatar_url} size={76} />
+                      <Avatar
+                        name={member.display_name}
+                        uri={member.avatar_url}
+                        focalX={member.avatar_focal_x}
+                        focalY={member.avatar_focal_y}
+                        size={76}
+                      />
                       <View style={styles.memberText}>
                         <View style={styles.titleRow}>
                           <Text style={[styles.memberName, { color: contributor ? '#FFF7F1' : colors.text }]}>{member.display_name}</Text>

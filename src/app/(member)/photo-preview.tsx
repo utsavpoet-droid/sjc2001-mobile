@@ -5,13 +5,13 @@
  */
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSharePhoto } from '@/hooks/use-share-photo';
 import React, { useCallback, useRef, useState } from 'react';
 import {
   Dimensions,
   FlatList,
+  Image as RNImage,
   Platform,
   Pressable,
   StatusBar,
@@ -27,14 +27,29 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from 'react-native-reanimated';
+import { reportMobileError } from '@/lib/error-logging';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
+function logPhotoPreviewImageError(uri: string, currentIndex: number, total: number) {
+  void reportMobileError({
+    source: 'mobile-image',
+    screen: 'photo-preview',
+    component: 'zoomable-photo',
+    message: 'Failed to load photo preview image',
+    metadata: { uri, currentIndex, total },
+  });
+}
+
 function ZoomablePhoto({
   uri,
+  currentIndex,
+  total,
   onZoomed,
 }: {
   uri: string;
+  currentIndex: number;
+  total: number;
   onZoomed: (zoomed: boolean) => void;
 }) {
   const scale = useSharedValue(1);
@@ -72,12 +87,13 @@ function ZoomablePhoto({
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[styles.photoSlide, animStyle]}>
-        <Image
+        <RNImage
           source={{ uri }}
           style={styles.photo}
-          contentFit="contain"
-          transition={100}
-          recyclingKey={uri}
+          resizeMode="contain"
+          onError={() => {
+            logPhotoPreviewImageError(uri, currentIndex, total);
+          }}
         />
       </Animated.View>
     </GestureDetector>
@@ -175,7 +191,7 @@ export default function PhotoPreviewScreen() {
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         renderItem={({ item: uri }) => (
-          <ZoomablePhoto uri={uri} onZoomed={handleZoomed} />
+          <ZoomablePhoto uri={uri} currentIndex={currentIndex} total={uris.length} onZoomed={handleZoomed} />
         )}
       />
     </View>

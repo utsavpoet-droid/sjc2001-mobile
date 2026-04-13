@@ -1,5 +1,4 @@
 import * as Haptics from 'expo-haptics';
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useLocalSearchParams, useRouter, useSegments, type Href } from 'expo-router';
@@ -8,6 +7,7 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Dimensions,
+  Image as RNImage,
   Pressable,
   StyleSheet,
   Text,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 
 import { BackLink } from '@/components/ui/back-link';
-import { GhostButton } from '@/components/ui/primitives';
+import { FocalImage, GhostButton } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
@@ -27,11 +27,53 @@ import {
 } from '@/features/member/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
+import { reportMobileError } from '@/lib/error-logging';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CONTENT_PADDING = Spacing.three * 2; // 32px total
 const PHOTO_WIDTH = SCREEN_WIDTH - CONTENT_PADDING;
 const MAX_PORTRAIT_HEIGHT = SCREEN_WIDTH * 1.2; // cap tall portraits
+
+function logProfileImageError(uri: string, component: string, metadata?: Record<string, unknown>) {
+  void reportMobileError({
+    source: 'mobile-image',
+    screen: 'member-profile',
+    component,
+    message: 'Failed to load member/profile image',
+    metadata: { uri, component, ...(metadata ?? {}) },
+  });
+}
+
+function ProfileImage({
+  uri,
+  style,
+  resizeMode = 'contain',
+  component,
+  metadata,
+  onLoad,
+}: {
+  uri: string;
+  style: object;
+  resizeMode?: 'cover' | 'contain' | 'stretch' | 'repeat' | 'center';
+  component: string;
+  metadata?: Record<string, unknown>;
+  onLoad?: (width: number, height: number) => void;
+}) {
+  return (
+    <RNImage
+      source={{ uri }}
+      style={style}
+      resizeMode={resizeMode}
+      onLoad={(event) => {
+        const { width, height } = event.nativeEvent.source;
+        onLoad?.(width, height);
+      }}
+      onError={() => {
+        logProfileImageError(uri, component, metadata);
+      }}
+    />
+  );
+}
 
 // ─── Helper: opens photo-preview lightbox ────────────────────────────────────
 
@@ -73,9 +115,11 @@ function SectionDivider({
 function SmartPhoto({
   uri,
   onPress,
+  metadata,
 }: {
   uri: string;
   onPress: () => void;
+  metadata?: Record<string, unknown>;
 }) {
   const [height, setHeight] = useState(PHOTO_WIDTH * 0.75); // default 4:3 until loaded
 
@@ -83,13 +127,13 @@ function SmartPhoto({
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.smartPhotoWrap, { opacity: pressed ? 0.88 : 1 }]}>
-      <Image
-        source={{ uri }}
+      <ProfileImage
+        uri={uri}
         style={[styles.smartPhoto, { width: PHOTO_WIDTH, height }]}
-        contentFit="contain"
-        recyclingKey={uri}
-        onLoad={(e) => {
-          const { width: w, height: h } = e.source;
+        resizeMode="contain"
+        component="smart-photo"
+        metadata={metadata}
+        onLoad={(w, h) => {
           if (w > 0 && h > 0) {
             const ratio = h / w;
             const computed = PHOTO_WIDTH * ratio;
@@ -112,21 +156,18 @@ function SmartPhoto({
 function FamilyGrid({
   uris,
   onPress,
+  metadata,
 }: {
   uris: string[];
   onPress: (index: number) => void;
+  metadata?: Record<string, unknown>;
 }) {
   if (uris.length === 1) {
     return (
       <Pressable
         onPress={() => onPress(0)}
         style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
-        <Image
-          source={{ uri: uris[0] }}
-          style={[styles.familySingle, { width: PHOTO_WIDTH }]}
-          contentFit="contain"
-          recyclingKey={uris[0]}
-        />
+        <ProfileImage uri={uris[0]} style={[styles.familySingle, { width: PHOTO_WIDTH }]} resizeMode="contain" component="family-single" metadata={metadata} />
       </Pressable>
     );
   }
@@ -140,12 +181,7 @@ function FamilyGrid({
             key={uri}
             onPress={() => onPress(i)}
             style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
-            <Image
-              source={{ uri }}
-              style={[styles.familyTile, { width: half, height: half * 1.25 }]}
-              contentFit="contain"
-              recyclingKey={uri}
-            />
+            <ProfileImage uri={uri} style={[styles.familyTile, { width: half, height: half * 1.25 }]} resizeMode="contain" component="family-grid-two" metadata={metadata} />
           </Pressable>
         ))}
       </View>
@@ -163,12 +199,7 @@ function FamilyGrid({
       <Pressable
         onPress={() => onPress(0)}
         style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
-        <Image
-          source={{ uri: uris[0] }}
-          style={[styles.familyTile, { width: leftW, height: totalH }]}
-          contentFit="contain"
-          recyclingKey={uris[0]}
-        />
+        <ProfileImage uri={uris[0]} style={[styles.familyTile, { width: leftW, height: totalH }]} resizeMode="contain" component="family-grid-three-left" metadata={metadata} />
       </Pressable>
       <View style={[styles.familyRightCol, { gap: Spacing.two }]}>
         {uris.slice(1).map((uri, i) => (
@@ -176,12 +207,7 @@ function FamilyGrid({
             key={uri}
             onPress={() => onPress(i + 1)}
             style={({ pressed }) => ({ opacity: pressed ? 0.88 : 1 })}>
-            <Image
-              source={{ uri }}
-              style={[styles.familyTile, { width: rightW, height: rightH }]}
-              contentFit="contain"
-              recyclingKey={uri}
-            />
+            <ProfileImage uri={uri} style={[styles.familyTile, { width: rightW, height: rightH }]} resizeMode="contain" component="family-grid-three-right" metadata={metadata} />
           </Pressable>
         ))}
       </View>
@@ -251,6 +277,21 @@ export default function MyProfileScreen() {
   const hasNow = Boolean(currentPhoto);
   const hasFamily = familyPhotos.length > 0;
   const hasMessage = Boolean(profile?.comments);
+  const avatarFocalX = currentPhoto
+    ? (profile?.currentPhotoFocalX ?? 50)
+    : schoolPhoto
+      ? (profile?.schoolPhotoFocalX ?? 50)
+      : 50;
+  const avatarFocalY = currentPhoto
+    ? (profile?.currentPhotoFocalY ?? 50)
+    : schoolPhoto
+      ? (profile?.schoolPhotoFocalY ?? 50)
+      : 50;
+  const imageLogContext = {
+    profileMemberId: memberId ? String(memberId) : String(user?.memberId ?? ''),
+    isOwnProfile,
+    profileName,
+  };
 
   return (
     <Screen scroll>
@@ -281,11 +322,19 @@ export default function MyProfileScreen() {
         style={styles.heroBanner}>
         <View style={styles.avatarRing}>
           {allPhotoUris[0] ? (
-          <Image
-            source={{ uri: allPhotoUris[0] }}
-            style={styles.avatar}
-            contentFit="contain"
-          />
+            <FocalImage
+              uri={allPhotoUris[0]}
+              focalX={avatarFocalX}
+              focalY={avatarFocalY}
+              width={108}
+              height={108}
+              borderRadius={54}
+              style={styles.avatar}
+              fallback={<View style={[styles.avatar, styles.avatarFallback]} />}
+              onError={() => {
+                logProfileImageError(allPhotoUris[0], 'profile-avatar', imageLogContext);
+              }}
+            />
           ) : (
             <View style={[styles.avatar, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
           )}
@@ -318,6 +367,7 @@ export default function MyProfileScreen() {
         <SmartPhoto
           uri={schoolPhoto!}
           onPress={() => openPreview([schoolPhoto!], 0)}
+          metadata={imageLogContext}
         />
       ) : !profileQueryLoading ? (
         <View style={[styles.emptyPhoto, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}> 
@@ -333,6 +383,7 @@ export default function MyProfileScreen() {
         <SmartPhoto
           uri={currentPhoto!}
           onPress={() => openPreview([currentPhoto!], 0)}
+          metadata={imageLogContext}
         />
       ) : !profileQueryLoading ? (
         <View style={[styles.emptyPhoto, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}> 
@@ -349,6 +400,7 @@ export default function MyProfileScreen() {
               void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
               openPreview(familyPhotos, index);
             }}
+            metadata={imageLogContext}
           />
         </>
       ) : null}
@@ -399,8 +451,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.two,
   },
   avatar: {
-    width: '100%',
-    height: '100%',
+    width: 108,
+    height: 108,
+  },
+  avatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   heroName: {
     color: '#FFF7F1',

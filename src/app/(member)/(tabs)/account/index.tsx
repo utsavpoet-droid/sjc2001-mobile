@@ -2,9 +2,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import { Link, Redirect, router, type Href } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
+import { Card, FocalImage, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getMobileMe } from '@/features/auth/api/auth-api';
@@ -72,6 +72,16 @@ export default function AccountScreen() {
   const schoolPhoto = resolveBackendUrl(memberProfile?.schoolPhotoUrl ?? null);
   const currentPhoto = resolveBackendUrl(memberProfile?.currentPhotoUrl ?? null);
   const heroPhoto = currentPhoto ?? schoolPhoto ?? profile?.avatarUrl ?? null;
+  const heroFocalX = currentPhoto
+    ? (memberProfile?.currentPhotoFocalX ?? 50)
+    : schoolPhoto
+      ? (memberProfile?.schoolPhotoFocalX ?? 50)
+      : 50;
+  const heroFocalY = currentPhoto
+    ? (memberProfile?.currentPhotoFocalY ?? 50)
+    : schoolPhoto
+      ? (memberProfile?.schoolPhotoFocalY ?? 50)
+      : 50;
   const hasCreatedProfile = memberProfileHasContent(memberProfile);
 
   if (!profileQuery.isLoading && hasCreatedProfile) {
@@ -108,7 +118,16 @@ export default function AccountScreen() {
           <View style={styles.portraitColumn}>
             <View style={styles.portraitFrame}>
               {heroPhoto ? (
-                <Image source={{ uri: heroPhoto }} style={styles.heroPhoto} resizeMode="contain" />
+                <FocalImage
+                  uri={heroPhoto}
+                  focalX={heroFocalX}
+                  focalY={heroFocalY}
+                  width={136}
+                  height={136}
+                  borderRadius={30}
+                  style={styles.heroPhoto}
+                  fallback={<View style={[styles.heroPhoto, styles.heroFallback]} />}
+                />
               ) : (
                 <Ionicons name="person" size={42} color="#B6C0CC" />
               )}
@@ -236,8 +255,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   heroPhoto: {
-    width: '100%',
-    height: '100%',
+    width: 136,
+    height: 136,
+  },
+  heroFallback: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   profileText: {
     flex: 1,
