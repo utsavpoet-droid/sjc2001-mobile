@@ -1,6 +1,7 @@
 import { getContentApiBase, getV1ApiBase, joinBasePath } from '@/lib/api/bases';
 import { ApiError } from '@/lib/api/errors';
 import { parseSuccessData } from '@/lib/api/envelope';
+import { reportMobileError } from '@/lib/error-logging';
 
 async function readJson(res: Response): Promise<unknown> {
   const text = await res.text();
@@ -30,6 +31,12 @@ export async function requestV1Json<T>(path: string, init?: RequestInit): Promis
       typeof (json as { error?: { message?: string } }).error?.message === 'string'
         ? (json as { error: { message: string } }).error.message
         : res.statusText;
+    void reportMobileError({
+      source: 'mobile-api-v1',
+      message: msg || `API request failed for ${path}`,
+      routePath: path,
+      metadata: { status: res.status, method: init?.method || 'GET' },
+    });
     throw new ApiError(res.status, msg, json);
   }
   return parseSuccessData<T>(json);
@@ -50,6 +57,12 @@ export async function requestContentJson<T>(path: string, init?: RequestInit): P
       typeof (json as { message?: unknown }).message === 'string'
         ? (json as { message: string }).message
         : res.statusText;
+    void reportMobileError({
+      source: 'mobile-api-content',
+      message: msg || `Content API request failed for ${path}`,
+      routePath: path,
+      metadata: { status: res.status, method: init?.method || 'GET' },
+    });
     throw new ApiError(res.status, msg, json);
   }
   return json as T;

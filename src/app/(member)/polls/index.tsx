@@ -20,6 +20,7 @@ type Poll = {
   id: number;
   title: string;
   description?: string | null;
+  isCompleted?: boolean;
   allowMultiple: boolean;
   maxSelections?: number | null;
   totalResponses: number;
@@ -83,14 +84,17 @@ export default function PollsScreen() {
       <View style={styles.stack}>
         {polls.map((poll) => {
           const selected = selections[poll.id] ?? poll.myOptionIds ?? [];
-          const canVote = !poll.alreadyVoted;
+          const isCompleted = !!poll.isCompleted;
+          const canVote = !isCompleted && !poll.alreadyVoted;
           return (
             <Card key={poll.id} style={styles.card}>
               <Text style={[styles.title, { color: colors.text }]}>{poll.title}</Text>
-              {poll.description ? <Text style={[styles.description, { color: colors.textSecondary }]}>{poll.description}</Text> : null}
-              <Text style={[styles.meta, { color: colors.textSecondary }]}>
-                {poll.totalResponses} responses · {poll.allowMultiple ? `Select up to ${poll.maxSelections ?? poll.options.length}` : 'Choose one'}
-              </Text>
+              {!isCompleted && poll.description ? <Text style={[styles.description, { color: colors.textSecondary }]}>{poll.description}</Text> : null}
+              {!isCompleted ? (
+                <Text style={[styles.meta, { color: colors.textSecondary }]}>
+                  {poll.totalResponses} responses · {poll.allowMultiple ? `Select up to ${poll.maxSelections ?? poll.options.length}` : 'Choose one'}
+                </Text>
+              ) : null}
               <View style={styles.optionStack}>
                 {poll.options.map((option) => {
                   const checked = selected.includes(option.id);
@@ -118,9 +122,9 @@ export default function PollsScreen() {
                   onPress={() => voteMutation.mutate({ pollId: poll.id, optionIds: selected })}>
                   Submit Vote
                 </PrimaryButton>
-              ) : (
+              ) : !isCompleted ? (
                 <GhostButton>Vote recorded</GhostButton>
-              )}
+              ) : null}
             </Card>
           );
         })}

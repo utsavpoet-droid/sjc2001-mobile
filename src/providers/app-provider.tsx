@@ -4,6 +4,7 @@ import { AppState, InteractionManager } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useAuthStore } from '@/features/auth/store/auth-store';
+import { reportMobileError } from '@/lib/error-logging';
 import { prepareNotificationRuntime, registerDeviceForPush, subscribeToNotificationResponses } from '@/lib/notifications/push';
 
 const queryClient = new QueryClient({
@@ -27,9 +28,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [hydrate]);
 
   useEffect(() => {
+    const errorUtils = (global as typeof global & {
+      ErrorUtils?: {
+        getGlobalHandler?: () => (error: Error, isFatal?: boolean) => void;
+        setGlobalHandler?: (handler: (error: Error, isFatal?: boolean) => void) => void;
+      };
+    }).ErrorUtils;
+
+    const previousHandler = errorUtils?.getGlobalHandler?.();
+    errorUtils?.setGlobalHandler?.((error, isFatal) => {
+      void reportMobileError({
+        source: isFatal ? 'mobile-fatal' : 'mobile-js',
+        message: error.message || 'Unhandled mobile error',
+        stack: error.stack || null,
+      });
+      previousHandler?.(error, isFatal);
+    });
+
+    return () => {
+      if (previousHandler && errorUtils?.setGlobalHandler) {
+        errorUtils.setGlobalHandler(previousHandler);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const task = InteractionManager.runAfterInteractions(() => {
       void prepareNotificationRuntime().catch(() => {
         // Push setup is best-effort and must never block app startup.
+        void reportMobileError({
+          source: 'mobile-push-runtime',
+          message: 'Push setup failed during app startup',
+        });
       });
     });
     const sub = subscribeToNotificationResponses();

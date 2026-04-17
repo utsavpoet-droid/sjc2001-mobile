@@ -181,8 +181,12 @@ export default function SignInScreen() {
             </GhostButton>
           ) : null}
 
-          <GhostButton onPress={() => setShowAccessRequest((value) => !value)}>
-            Forgotten password or need access? Click here.
+          <GhostButton
+            onPress={() => {
+              const next = !showAccessRequest;
+              setShowAccessRequest(next);
+            }}>
+            Need access? Request it here.
           </GhostButton>
         </Card>
 
