@@ -416,6 +416,23 @@ export default function MemberDetailScreen() {
       {/* ── CONTACT INFO ─────────────────────────────────────────── */}
       <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <Text style={[styles.infoHeading, { color: colors.text }]}>Contact</Text>
+        {member.birthday ? (() => {
+          const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+          const [mm, dd] = member.birthday.split('-');
+          const month = MONTHS[parseInt(mm, 10) - 1] ?? '';
+          const day = parseInt(dd, 10);
+          const today = new Date();
+          const isToday = parseInt(mm, 10) === today.getMonth() + 1 && day === today.getDate();
+          const displayLabel = isToday ? `${month} ${day} — Happy Birthday! 🥳` : `${month} ${day}`;
+          return (
+            <ContactRow
+              icon="gift-outline"
+              label="Birthday"
+              value={displayLabel}
+              colors={colors}
+            />
+          );
+        })() : null}
         {member.email ? (
           <ContactRow
             icon="mail-outline"
@@ -442,7 +459,7 @@ export default function MemberDetailScreen() {
             colors={colors}
           />
         ) : null}
-        {!member.email && !member.phone && !member.location_label ? (
+        {!member.birthday && !member.email && !member.phone && !member.location_label ? (
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>No contact details listed.</Text>
         ) : null}
       </View>

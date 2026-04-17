@@ -8,6 +8,7 @@ import React from 'react';
 import {
   Dimensions,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -15,12 +16,260 @@ import {
 
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
-import { getNews } from '@/features/content/api';
+import { getBirthdays, getNews, type BirthdayEntry } from '@/features/content/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { resolveBackendUrl } from '@/lib/api/bases';
 
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const silverCircleLogo = require('../../../../assets/branding/silver-circle-25.png');
 const SW = Dimensions.get('window').width;
+
+// ─── Birthday strip ───────────────────────────────────────────────────────────
+
+const BDAY_MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function BirthdayStrip({
+  entries,
+  colors,
+}: {
+  entries: BirthdayEntry[];
+  colors: (typeof Colors)[keyof typeof Colors];
+}) {
+  if (entries.length === 0) return null;
+
+  const todayList = entries.filter((b) => b.isToday);
+  const upcomingList = entries.filter((b) => !b.isToday);
+
+  function bdayLabel(b: BirthdayEntry): string {
+    const [mm, dd] = b.birthday.split('-');
+    const month = BDAY_MONTHS[parseInt(mm, 10) - 1] ?? '';
+    return `${month} ${parseInt(dd, 10)}`;
+  }
+
+  return (
+    <View style={[birthdayStyles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View style={birthdayStyles.header}>
+        <Text style={[birthdayStyles.heading, { color: colors.text }]}>🎂 Birthdays</Text>
+        <Text style={[birthdayStyles.sub, { color: colors.textMuted }]}>Next 60 days</Text>
+      </View>
+
+      {/* Today banners */}
+      {todayList.map((b) => (
+        <Pressable
+          key={b.id}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push(`/(member)/members/${b.id}` as Href);
+          }}
+          style={({ pressed }) => [
+            birthdayStyles.todayBanner,
+            { opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <LinearGradient
+            colors={['#6d28d9', '#db2777', '#ea580c']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={birthdayStyles.todayGradient}
+          >
+            <View style={birthdayStyles.todayAvatarWrap}>
+              {b.photoUrl ? (
+                <Image
+                  source={{ uri: resolveBackendUrl(b.photoUrl) ?? b.photoUrl }}
+                  style={birthdayStyles.todayAvatar}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={[birthdayStyles.todayAvatar, birthdayStyles.todayAvatarFallback]}>
+                  <Text style={birthdayStyles.todayInitials}>
+                    {b.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
+                  </Text>
+                </View>
+              )}
+              <Text style={birthdayStyles.todayCake}>🎂</Text>
+            </View>
+            <View style={birthdayStyles.todayInfo}>
+              <Text style={birthdayStyles.todayName}>{b.name}</Text>
+              <Text style={birthdayStyles.todayWish}>Happy Birthday! 🥳</Text>
+            </View>
+          </LinearGradient>
+        </Pressable>
+      ))}
+
+      {/* Upcoming horizontal scroll */}
+      {upcomingList.length > 0 && (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={birthdayStyles.scroll}>
+          {upcomingList.map((b) => {
+            const soon = b.daysUntil <= 7;
+            const resolvedPhoto = b.photoUrl ? resolveBackendUrl(b.photoUrl) ?? b.photoUrl : null;
+            return (
+              <Pressable
+                key={b.id}
+                onPress={() => {
+                  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  router.push(`/(member)/members/${b.id}` as Href);
+                }}
+                style={({ pressed }) => [
+                  birthdayStyles.chip,
+                  {
+                    backgroundColor: soon ? colors.accentSoft : colors.backgroundSoft,
+                    borderColor: soon ? colors.accent : colors.border,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <View style={birthdayStyles.chipAvatarWrap}>
+                  {resolvedPhoto ? (
+                    <Image
+                      source={{ uri: resolvedPhoto }}
+                      style={birthdayStyles.chipAvatar}
+                      contentFit="cover"
+                    />
+                  ) : (
+                    <View style={[birthdayStyles.chipAvatar, { backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={[birthdayStyles.chipInitials, { color: colors.accent }]}>
+                        {b.name.split(' ').map((w) => w[0]).join('').toUpperCase().slice(0, 2)}
+                      </Text>
+                    </View>
+                  )}
+                  {soon && <Text style={birthdayStyles.chipBalloon}>🎈</Text>}
+                </View>
+                <Text style={[birthdayStyles.chipName, { color: colors.text }]} numberOfLines={1}>{b.name.split(' ')[0]}</Text>
+                <Text style={[birthdayStyles.chipDate, { color: colors.textMuted }]}>{bdayLabel(b)}</Text>
+                <Text style={[birthdayStyles.chipDays, { color: soon ? colors.accent : colors.textMuted }]}>
+                  {b.daysUntil === 1 ? 'Tomorrow' : `${b.daysUntil}d`}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
+}
+
+const birthdayStyles = StyleSheet.create({
+  card: {
+    borderRadius: 28,
+    borderWidth: 1,
+    padding: Spacing.four,
+    gap: Spacing.three,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  heading: {
+    fontFamily: Fonts.rounded,
+    fontSize: 22,
+  },
+  sub: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  todayBanner: {
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  todayGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    padding: Spacing.three,
+    borderRadius: 20,
+  },
+  todayAvatarWrap: {
+    position: 'relative',
+  },
+  todayAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.4)',
+  },
+  todayAvatarFallback: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayInitials: {
+    color: '#fff',
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
+  },
+  todayCake: {
+    position: 'absolute',
+    bottom: -4,
+    right: -6,
+    fontSize: 18,
+  },
+  todayInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  todayName: {
+    color: '#fff',
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
+    lineHeight: 22,
+  },
+  todayWish: {
+    color: 'rgba(255,255,255,0.8)',
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+  },
+  scroll: {
+    marginHorizontal: -Spacing.four,
+    paddingHorizontal: Spacing.four,
+  },
+  chip: {
+    width: 90,
+    marginRight: Spacing.two,
+    borderRadius: 18,
+    borderWidth: 1,
+    padding: Spacing.two,
+    alignItems: 'center',
+    gap: 4,
+  },
+  chipAvatarWrap: {
+    position: 'relative',
+  },
+  chipAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  chipInitials: {
+    fontFamily: Fonts.rounded,
+    fontSize: 16,
+  },
+  chipBalloon: {
+    position: 'absolute',
+    top: -6,
+    right: -8,
+    fontSize: 14,
+  },
+  chipName: {
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  chipDate: {
+    fontFamily: Fonts.mono,
+    fontSize: 10,
+    letterSpacing: 0.5,
+  },
+  chipDays: {
+    fontFamily: Fonts.rounded,
+    fontSize: 11,
+  },
+});
 
 // ─── Greeting helper ─────────────────────────────────────────────────────────
 
@@ -115,6 +364,16 @@ export default function HomeScreen() {
     queryFn: () => getNews(),
   });
   const newsItems = Array.isArray(newsQuery.data) ? newsQuery.data.slice(0, 4) : [];
+
+  const birthdaysQuery = useQuery({
+    queryKey: ['birthdays-home'],
+    queryFn: async () => {
+      const token = await useAuthStore.getState().getValidAccessToken();
+      if (!token) return { birthdays: [] };
+      return getBirthdays(token);
+    },
+  });
+  const birthdayEntries: BirthdayEntry[] = birthdaysQuery.data?.birthdays ?? [];
   type NewsItem = { id?: number; title?: string | null; body?: string | null; publishedAt?: string | null };
   const featuredNews = newsItems[0] as NewsItem | undefined;
   const restNews = (newsItems.slice(1) as NewsItem[]);
@@ -181,6 +440,11 @@ export default function HomeScreen() {
           </Link>
         </View>
       </LinearGradient>
+
+      {/* ── BIRTHDAYS ─────────────────────────────────────────────── */}
+      {birthdayEntries.length > 0 && (
+        <BirthdayStrip entries={birthdayEntries} colors={colors} />
+      )}
 
       {/* ── NEWS ──────────────────────────────────────────────────── */}
       {(newsItems.length > 0 || newsQuery.isLoading) ? (

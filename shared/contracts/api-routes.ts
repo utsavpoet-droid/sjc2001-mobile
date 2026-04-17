@@ -30,3 +30,4 @@ export const API_MEMBER_CHANGE_PASSWORD = '/member/change-password' as const;
 export const API_MEMBER_TOTP_SETUP = '/member/totp/setup' as const;
 export const API_MEMBER_TOTP_VERIFY = '/member/totp/verify' as const;
 export const API_MEMBER_TOTP_DISABLE = '/member/totp/disable' as const;
+export const API_BIRTHDAYS = '/birthdays' as const;

@@ -13,6 +13,7 @@ import {
 } from '@/lib/api/wire-alignment';
 
 import {
+  API_BIRTHDAYS,
   API_COMMENTS,
   API_GALLERY,
   API_GIPHY,
@@ -108,6 +109,26 @@ export async function getGalleryAlbum(albumId: string) {
 
 export async function getNews() {
   return requestContentJson<unknown[]>(API_NEWS, { method: 'GET' });
+}
+
+export type BirthdayEntry = {
+  id: number;
+  name: string;
+  city: string | null;
+  country: string | null;
+  birthday: string; // "MM-DD"
+  daysUntil: number;
+  isToday: boolean;
+  photoUrl: string | null;
+  avatarFocalX: number;
+  avatarFocalY: number;
+};
+
+export async function getBirthdays(accessToken: string): Promise<{ birthdays: BirthdayEntry[] }> {
+  return requestContentJson<{ birthdays: BirthdayEntry[] }>(
+    `${API_BIRTHDAYS}?days=60`,
+    { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } },
+  );
 }
 
 export async function getGifs(params: { q?: string; limit?: number }) {

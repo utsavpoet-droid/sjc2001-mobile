@@ -131,6 +131,7 @@ export function mapMemberDetailFromWire(w: MemberListWire): MemberSummaryNormali
   bioFromComments: string | null | undefined;
   email?: string;
   phone?: string;
+  birthday?: string | null;
   isJoining?: boolean;
   contributionAmount?: string;
   photo_urls: string[];
@@ -155,6 +156,7 @@ export function mapMemberDetailFromWire(w: MemberListWire): MemberSummaryNormali
     bioFromComments,
     email: typeof w.email === 'string' ? w.email : undefined,
     phone: typeof w.phone === 'string' ? w.phone : undefined,
+    birthday: typeof w.birthday === 'string' ? w.birthday : null,
     isJoining: typeof w.isJoining === 'boolean' ? w.isJoining : undefined,
     contributionAmount:
       w.contributionAmount === undefined || w.contributionAmount === null
