@@ -31,3 +31,7 @@ export const API_MEMBER_TOTP_SETUP = '/member/totp/setup' as const;
 export const API_MEMBER_TOTP_VERIFY = '/member/totp/verify' as const;
 export const API_MEMBER_TOTP_DISABLE = '/member/totp/disable' as const;
 export const API_BIRTHDAYS = '/birthdays' as const;
+
+export const API_TRIPS = '/events/trip' as const;
+export const API_TRIP_MY_TRAVEL = '/events/trip/:id/my-travel' as const;
+export const API_TRIP_SCAN_TRAVEL = '/events/trip/:id/scan-travel' as const;
