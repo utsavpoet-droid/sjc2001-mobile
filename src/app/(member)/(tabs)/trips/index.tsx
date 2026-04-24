@@ -149,7 +149,13 @@ export default function TripsScreen() {
           !query.isLoading ? (
             <Card style={styles.emptyCard}>
               <Ionicons name="airplane-outline" size={36} color={colors.textMuted} style={{ alignSelf: 'center' }} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No trips yet.</Text>
+              {query.isError ? (
+                <Text style={[styles.emptyText, { color: colors.danger }]}>
+                  {query.error instanceof Error ? query.error.message : 'Failed to load trips'}
+                </Text>
+              ) : (
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No trips yet.</Text>
+              )}
             </Card>
           ) : null
         }
