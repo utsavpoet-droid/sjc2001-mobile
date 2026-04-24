@@ -7,6 +7,7 @@ import {
   FlatList,
   Pressable,
   RefreshControl,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,8 +15,7 @@ import {
 } from 'react-native';
 
 import { BackLink } from '@/components/ui/back-link';
-import { Card, GhostButton, SectionTitle } from '@/components/ui/primitives';
-import { Screen } from '@/components/ui/screen';
+import { Card, GhostButton } from '@/components/ui/primitives';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import {
@@ -206,7 +206,7 @@ function OverviewTab({
         : 'Settled ✓';
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
+    <View style={styles.tabContent}>
       {days > 0 ? (
         <Card style={[styles.highlightCard, { backgroundColor: colors.accentSoft, borderColor: colors.accent }]}>
           <Text style={[styles.countdownLabel, { color: colors.accent }]}>
@@ -282,7 +282,7 @@ function OverviewTab({
           <Text style={[styles.travelText, { color: colors.textMuted }]}>No travel details added yet.</Text>
         ) : null}
       </Card>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -343,7 +343,7 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
   }, [attendees]);
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
+    <View style={styles.tabContent}>
       {attendees.map((a) => (
         <AttendeeCard key={a.id} attendee={a} />
       ))}
@@ -363,7 +363,7 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
       {attendees.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textMuted }]}>No attendees yet.</Text>
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -463,14 +463,14 @@ function ExpensesTab({ expenses, tripId }: { expenses: TripExpense[]; tripId: nu
           </Pressable>
         ))}
       </View>
-      <ScrollView contentContainerStyle={styles.tabContent}>
+      <View style={styles.tabContent}>
         {visible.map((e) => (
           <ExpenseCard key={e.id} expense={e} />
         ))}
         {visible.length === 0 ? (
           <Text style={[styles.emptyText, { color: colors.textMuted }]}>No expenses.</Text>
         ) : null}
-      </ScrollView>
+      </View>
       <Pressable
         style={[styles.fab, { backgroundColor: colors.accent }]}
         onPress={() => router.push(`/(member)/trips/${tripId}/submit-expense` as never)}>
@@ -495,7 +495,7 @@ function BalanceTab({
   const settlement = useMemo(() => computeSettlement(balances), [balances]);
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
+    <View style={styles.tabContent}>
       {balances.map((b) => {
         const isMe = b.memberId === myMemberId;
         const bColor = b.balance > 0.01 ? colors.danger : b.balance < -0.01 ? colors.success : colors.textSecondary;
@@ -555,7 +555,7 @@ function BalanceTab({
           <Text style={[styles.settledText, { color: colors.success }]}>Everyone is settled up!</Text>
         </Card>
       )}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -571,7 +571,7 @@ function AlbumsTab({
   const colors = Colors[resolveThemeMode(useColorScheme())];
 
   return (
-    <ScrollView contentContainerStyle={styles.tabContent}>
+    <View style={styles.tabContent}>
       <View style={styles.albumGrid}>
         {albums.map((album) => (
           <Pressable
@@ -598,7 +598,7 @@ function AlbumsTab({
       {albums.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textMuted }]}>No albums yet.</Text>
       ) : null}
-    </ScrollView>
+    </View>
   );
 }
 
@@ -703,11 +703,11 @@ export default function TripDetailScreen() {
 
   if (isLoading) {
     return (
-      <Screen>
+      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
         <View style={styles.loadingCenter}>
           <ActivityIndicator color={colors.accent} size="large" />
         </View>
-      </Screen>
+      </SafeAreaView>
     );
   }
 
@@ -716,7 +716,7 @@ export default function TripDetailScreen() {
   const sc = TRIP_STATUS_COLORS[tripStatus];
 
   return (
-    <Screen>
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <View style={styles.headerArea}>
         <BackLink />
         <View style={styles.tripTitleRow}>
@@ -746,6 +746,7 @@ export default function TripDetailScreen() {
       <TabStrip active={activeTab} onSelect={setActiveTab} />
 
       <FlatList
+        style={styles.flex}
         data={[activeTab]}
         keyExtractor={(item) => item}
         renderItem={() => null}
@@ -781,13 +782,16 @@ export default function TripDetailScreen() {
           </>
         }
       />
-    </Screen>
+    </SafeAreaView>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+  },
   loadingCenter: {
     flex: 1,
     alignItems: 'center',
@@ -795,8 +799,9 @@ const styles = StyleSheet.create({
   },
   headerArea: {
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.three,
-    gap: Spacing.two,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
+    gap: Spacing.one,
   },
   tripTitleRow: {
     flexDirection: 'row',
@@ -837,6 +842,9 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 15,
+  },
+  flex: {
+    flex: 1,
   },
   tabContent: {
     padding: Spacing.four,
