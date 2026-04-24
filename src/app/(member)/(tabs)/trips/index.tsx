@@ -18,7 +18,17 @@ import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { getTrips } from '@/features/trips/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import type { TripStatus, TripSummary } from '@shared/contracts/trips-contract';
+import type { TripStatus } from '@shared/contracts/trips-contract';
+
+type TripListItem = {
+  id: number;
+  title: string;
+  startDate: string;
+  endDate: string;
+  location: string | null;
+  status: TripStatus;
+  _count: { attendees: number; expenses: number };
+};
 
 function parseDay(d: string): Date {
   if (/^\d{4}-\d{2}-\d{2}$/.test(d)) {
@@ -54,7 +64,7 @@ function StatusBadge({ status }: { status: TripStatus }) {
   );
 }
 
-function TripCard({ trip }: { trip: TripSummary }) {
+function TripCard({ trip }: { trip: TripListItem }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   return (
     <Pressable onPress={() => router.push(`/(member)/trips/${trip.id}` as never)}>
@@ -84,17 +94,11 @@ function TripCard({ trip }: { trip: TripSummary }) {
           </View>
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{trip.stats.attendeeCount}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{trip._count.attendees}</Text>
               <Text style={[styles.statLabel, { color: colors.textMuted }]}>Attendees</Text>
             </View>
             <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text }]}>
-                ${trip.stats.totalSpent.toFixed(0)}
-              </Text>
-              <Text style={[styles.statLabel, { color: colors.textMuted }]}>Spent</Text>
-            </View>
-            <View style={styles.statItem}>
-              <Text style={[styles.statValue, { color: colors.text }]}>{trip.stats.expenseCount}</Text>
+              <Text style={[styles.statValue, { color: colors.text }]}>{trip._count.expenses}</Text>
               <Text style={[styles.statLabel, { color: colors.textMuted }]}>Expenses</Text>
             </View>
           </View>
@@ -120,7 +124,7 @@ export default function TripsScreen() {
   return (
     <Screen>
       <FlatList
-        data={query.data ?? []}
+        data={(query.data ?? []) as TripListItem[]}
         keyExtractor={(item) => String(item.id)}
         initialNumToRender={12}
         refreshControl={

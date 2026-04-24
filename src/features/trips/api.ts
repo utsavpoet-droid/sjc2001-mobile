@@ -22,7 +22,7 @@ function authJson(token: string): HeadersInit {
 }
 
 export async function getTrips(token: string): Promise<TripSummary[]> {
-  return requestContentJson('/events/trip', { headers: auth(token) });
+  return requestContentJson('/events/trip?mine=true', { headers: auth(token) });
 }
 
 export async function getTripDetail(
