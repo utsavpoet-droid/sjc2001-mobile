@@ -114,15 +114,14 @@ const CATEGORY_ICONS: Record<ExpenseCategory, keyof typeof Ionicons.glyphMap> = 
 function Badge({
   label,
   bg,
-  textColor,
 }: {
   label: string;
   bg: string;
-  textColor: string;
+  textColor?: string;
 }) {
   return (
-    <View style={[styles.badge, { backgroundColor: bg + '33', borderColor: bg }]}>
-      <Text style={[styles.badgeText, { color: textColor }]}>{label}</Text>
+    <View style={[styles.badge, { backgroundColor: bg }]}>
+      <Text style={[styles.badgeText, { color: '#fff' }]}>{label}</Text>
     </View>
   );
 }
@@ -152,23 +151,30 @@ function TabStrip({
       showsHorizontalScrollIndicator={false}
       style={[styles.tabStrip, { borderBottomColor: colors.border }]}
       contentContainerStyle={styles.tabStripContent}>
-      {TABS.map((tab) => (
-        <Pressable
-          key={tab.key}
-          onPress={() => onSelect(tab.key)}
-          style={[
-            styles.tabItem,
-            active === tab.key && { borderBottomColor: colors.accent, borderBottomWidth: 2 },
-          ]}>
-          <Text
+      {TABS.map((tab) => {
+        const isActive = active === tab.key;
+        return (
+          <Pressable
+            key={tab.key}
+            onPress={() => onSelect(tab.key)}
             style={[
-              styles.tabLabel,
-              { color: active === tab.key ? colors.accent : colors.textSecondary },
+              styles.tabItem,
+              isActive && { borderBottomColor: colors.accent, borderBottomWidth: 3 },
             ]}>
-            {tab.label}
-          </Text>
-        </Pressable>
-      ))}
+            <Text
+              style={[
+                styles.tabLabel,
+                {
+                  color: isActive ? colors.accent : colors.text,
+                  fontFamily: isActive ? Fonts.rounded : Fonts.sans,
+                  opacity: isActive ? 1 : 0.6,
+                },
+              ]}>
+              {tab.label}
+            </Text>
+          </Pressable>
+        );
+      })}
     </ScrollView>
   );
 }
@@ -821,17 +827,16 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   tabStripContent: {
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
     gap: 0,
   },
   tabItem: {
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
+    paddingVertical: 12,
     marginBottom: -1,
   },
   tabLabel: {
-    fontFamily: Fonts.rounded,
-    fontSize: 14,
+    fontSize: 15,
   },
   tabContent: {
     padding: Spacing.four,
@@ -1101,15 +1106,14 @@ const styles = StyleSheet.create({
   },
   // Shared
   badge: {
-    borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   badgeText: {
-    fontFamily: Fonts.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
+    fontFamily: Fonts.rounded,
+    fontSize: 11,
+    letterSpacing: 0.4,
   },
   emptyText: {
     fontFamily: Fonts.sans,

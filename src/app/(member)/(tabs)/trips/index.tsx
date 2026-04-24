@@ -58,8 +58,8 @@ const STATUS_COLORS: Record<TripStatus, { bg: string; text: string }> = {
 function StatusBadge({ status }: { status: TripStatus }) {
   const c = STATUS_COLORS[status] ?? STATUS_COLORS.PLANNING;
   return (
-    <View style={[styles.badge, { backgroundColor: c.bg + '33', borderColor: c.bg }]}>
-      <Text style={[styles.badgeText, { color: c.text }]}>{status}</Text>
+    <View style={[styles.badge, { backgroundColor: c.bg }]}>
+      <Text style={[styles.badgeText, { color: '#fff' }]}>{status}</Text>
     </View>
   );
 }
@@ -223,15 +223,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   badge: {
-    borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
   },
   badgeText: {
-    fontFamily: Fonts.mono,
-    fontSize: 10,
-    letterSpacing: 0.8,
+    fontFamily: Fonts.rounded,
+    fontSize: 11,
+    letterSpacing: 0.4,
   },
   emptyCard: {
     gap: Spacing.two,
