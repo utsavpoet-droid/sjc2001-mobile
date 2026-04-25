@@ -1,21 +1,23 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BackLink } from '@/components/ui/back-link';
-import { Card, GhostButton } from '@/components/ui/primitives';
-import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
+import { Card } from '@/components/ui/primitives';
+import { BottomTabInset, Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import {
   getMyTravel,
@@ -57,6 +59,14 @@ function fmtDate(d: string): string {
   });
 }
 
+function fmtDateShort(d: string): string {
+  return parseDay(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+}
+
 function fmtDateTime(d: string): string {
   if (d.includes('T')) {
     return new Date(d).toLocaleString('en-US', {
@@ -75,7 +85,38 @@ function daysUntil(d: string): number {
   return Math.ceil((target.getTime() - now.getTime()) / 86400000);
 }
 
-// ─── Badge helpers ────────────────────────────────────────────────────────────
+function tripDayInfo(start: string, end: string): { phase: 'before' | 'during' | 'after'; label: string; sub: string } {
+  const now = new Date();
+  const startDate = parseDay(start);
+  const endDate = parseDay(end);
+  const dayMs = 86400000;
+  const totalDays = Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / dayMs) + 1);
+
+  if (now < startDate) {
+    const days = Math.ceil((startDate.getTime() - now.getTime()) / dayMs);
+    return {
+      phase: 'before',
+      label: `${days}`,
+      sub: `day${days !== 1 ? 's' : ''} to go`,
+    };
+  }
+  if (now > new Date(endDate.getTime() + dayMs)) {
+    const days = Math.floor((now.getTime() - endDate.getTime()) / dayMs);
+    return {
+      phase: 'after',
+      label: `${days}`,
+      sub: `day${days !== 1 ? 's' : ''} ago`,
+    };
+  }
+  const dayN = Math.max(1, Math.floor((now.getTime() - startDate.getTime()) / dayMs) + 1);
+  return {
+    phase: 'during',
+    label: `Day ${dayN}`,
+    sub: `of ${totalDays}`,
+  };
+}
+
+// ─── Status colors ───────────────────────────────────────────────────────────
 
 const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
   PLANNING:    '#1D4ED8',
@@ -83,6 +124,14 @@ const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
   RECONCILING: '#B45309',
   SETTLED:     '#475569',
   CANCELLED:   '#B91C1C',
+};
+
+const TRIP_STATUS_GRADIENTS: Record<TripStatus, [string, string]> = {
+  PLANNING:    ['#3B82F6', '#1E3A8A'],
+  ACTIVE:      ['#22C55E', '#14532D'],
+  RECONCILING: ['#F59E0B', '#78350F'],
+  SETTLED:     ['#94A3B8', '#334155'],
+  CANCELLED:   ['#EF4444', '#7F1D1D'],
 };
 
 const ATTENDEE_STATUS_COLORS: Record<AttendeeStatus, string> = {
@@ -110,14 +159,14 @@ const CATEGORY_ICONS: Record<ExpenseCategory, keyof typeof Ionicons.glyphMap> = 
   OTHER: 'ellipsis-horizontal-outline',
 };
 
-function Badge({
-  label,
-  bg,
-}: {
-  label: string;
-  bg: string;
-  textColor?: string;
-}) {
+const PHASES: { key: TripStatus; label: string }[] = [
+  { key: 'PLANNING', label: 'Planning' },
+  { key: 'ACTIVE', label: 'Active' },
+  { key: 'RECONCILING', label: 'Settling' },
+  { key: 'SETTLED', label: 'Settled' },
+];
+
+function Badge({ label, bg }: { label: string; bg: string }) {
   return (
     <View style={[styles.badge, { backgroundColor: bg }]}>
       <Text style={[styles.badgeText, { color: '#fff' }]}>{label}</Text>
@@ -125,167 +174,365 @@ function Badge({
   );
 }
 
-// ─── Tab strip ───────────────────────────────────────────────────────────────
+// ─── Hero ────────────────────────────────────────────────────────────────────
 
-type Tab = 'overview' | 'attendees' | 'expenses' | 'balance' | 'albums';
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'attendees', label: 'Attendees' },
-  { key: 'expenses', label: 'Expenses' },
-  { key: 'balance', label: 'Balance' },
-  { key: 'albums', label: 'Albums' },
-];
-
-function TabStrip({
-  active,
-  onSelect,
+function TripHero({
+  trip,
+  myBalance,
 }: {
-  active: Tab;
-  onSelect: (t: Tab) => void;
+  trip: { title: string; status: TripStatus; startDate: string; endDate: string; location: string | null; stats: { totalSpent: number; attendeeCount: number; expenseCount: number } };
+  myBalance: TripBalance | null | undefined;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
+  const dayInfo = tripDayInfo(trip.startDate, trip.endDate);
+  const gradient = TRIP_STATUS_GRADIENTS[trip.status];
+  const balance = myBalance?.balance ?? 0;
+  const myMoneyLabel =
+    Math.abs(balance) < 0.01
+      ? 'Settled'
+      : balance > 0
+        ? `Owe $${balance.toFixed(2)}`
+        : `+$${Math.abs(balance).toFixed(2)}`;
+  const myMoneyColor =
+    Math.abs(balance) < 0.01 ? '#FFFFFF' : balance > 0 ? '#FECACA' : '#BBF7D0';
+
   return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={[styles.tabStrip, { borderBottomColor: colors.border }]}
-      contentContainerStyle={styles.tabStripContent}>
-      {TABS.map((tab) => {
-        const isActive = active === tab.key;
-        return (
-          <Pressable
-            key={tab.key}
-            onPress={() => onSelect(tab.key)}
-            style={[
-              styles.tabItem,
-              isActive && { borderBottomColor: colors.accent, borderBottomWidth: 3 },
-            ]}>
-            <Text
-              style={[
-                styles.tabLabel,
-                {
-                  color: isActive ? colors.accent : colors.text,
-                  fontFamily: isActive ? Fonts.rounded : Fonts.sans,
-                  opacity: isActive ? 1 : 0.6,
-                },
-              ]}>
-              {tab.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+    <LinearGradient
+      colors={gradient}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.hero}>
+      <View style={styles.heroTop}>
+        <View style={styles.heroPill}>
+          <View style={[styles.heroDot, { backgroundColor: '#fff' }]} />
+          <Text style={styles.heroPillText}>{trip.status}</Text>
+        </View>
+        {trip.location ? (
+          <View style={styles.heroPill}>
+            <Ionicons name="location" size={12} color="#fff" />
+            <Text style={styles.heroPillText} numberOfLines={1}>{trip.location}</Text>
+          </View>
+        ) : null}
+      </View>
+
+      <Text style={styles.heroTitle} numberOfLines={2}>{trip.title}</Text>
+
+      <View style={styles.heroCountdown}>
+        <Text style={styles.heroCountdownNumber}>{dayInfo.label}</Text>
+        <View style={styles.heroCountdownRight}>
+          <Text style={styles.heroCountdownSub}>{dayInfo.sub}</Text>
+          <Text style={styles.heroCountdownDates}>
+            {fmtDateShort(trip.startDate)} – {fmtDateShort(trip.endDate)}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.heroStatsRow}>
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatBig}>${trip.stats.totalSpent.toFixed(0)}</Text>
+          <Text style={styles.heroStatSmall}>Total</Text>
+        </View>
+        <View style={styles.heroStatDivider} />
+        <View style={styles.heroStat}>
+          <Text style={styles.heroStatBig}>{trip.stats.attendeeCount}</Text>
+          <Text style={styles.heroStatSmall}>Going</Text>
+        </View>
+        <View style={styles.heroStatDivider} />
+        <View style={styles.heroStat}>
+          <Text style={[styles.heroStatBig, { color: myMoneyColor }]}>{myMoneyLabel}</Text>
+          <Text style={styles.heroStatSmall}>You</Text>
+        </View>
+      </View>
+
+      {/* Phase strip */}
+      <View style={styles.phaseStrip}>
+        {PHASES.map((p, i) => {
+          const currentIdx = PHASES.findIndex((x) => x.key === trip.status);
+          const isDone = i <= currentIdx;
+          const isCurrent = i === currentIdx;
+          return (
+            <View key={p.key} style={styles.phaseItem}>
+              <View
+                style={[
+                  styles.phaseDot,
+                  {
+                    backgroundColor: isDone ? '#fff' : 'rgba(255,255,255,0.3)',
+                    transform: [{ scale: isCurrent ? 1.3 : 1 }],
+                  },
+                ]}
+              />
+              <Text
+                style={[
+                  styles.phaseLabel,
+                  { color: isCurrent ? '#fff' : 'rgba(255,255,255,0.6)', fontFamily: isCurrent ? Fonts.rounded : Fonts.sans },
+                ]}>
+                {p.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+    </LinearGradient>
   );
 }
 
-// ─── Overview tab ─────────────────────────────────────────────────────────────
+// ─── Quick actions ───────────────────────────────────────────────────────────
 
-function OverviewTab({
-  trip,
-  myBalance,
-  myTravel,
-  tripId,
-}: {
-  trip: ReturnType<typeof useTripQueries>['detail']['data'];
-  myBalance: TripBalance | null | undefined;
-  myTravel: { travelMode?: string | null; arrivalTime?: string | null; arrivalAirport?: string | null; departureTime?: string | null; departureAirport?: string | null } | null | undefined;
-  tripId: number;
-}) {
+function QuickActions({ tripId }: { tripId: number }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
-  if (!trip) return null;
 
-  const days = daysUntil(trip.startDate);
-  const balance = myBalance?.balance ?? 0;
-  const balanceColor = balance > 0.01 ? colors.danger : balance < -0.01 ? colors.success : colors.textSecondary;
-  const balanceLabel =
-    balance > 0.01
-      ? `You owe $${balance.toFixed(2)}`
-      : balance < -0.01
-        ? `You're owed $${Math.abs(balance).toFixed(2)}`
-        : 'Settled ✓';
+  const actions: { key: string; icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void }[] = [
+    {
+      key: 'add-expense',
+      icon: 'add-circle',
+      label: 'Add\nExpense',
+      onPress: () => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(member)/trips/${tripId}/submit-expense` as never);
+      },
+    },
+    {
+      key: 'edit-travel',
+      icon: 'airplane',
+      label: 'My\nTravel',
+      onPress: () => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(member)/trips/${tripId}/edit-travel` as never);
+      },
+    },
+    {
+      key: 'pay',
+      icon: 'cash-outline',
+      label: 'Report\nPayment',
+      onPress: () => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(member)/trips/${tripId}/report-payment` as never);
+      },
+    },
+  ];
 
   return (
-    <View style={styles.tabContent}>
-      {days > 0 ? (
-        <Card style={[styles.highlightCard, { backgroundColor: colors.accentSoft, borderColor: colors.accent }]}>
-          <Text style={[styles.countdownLabel, { color: colors.accent }]}>
-            {days} day{days !== 1 ? 's' : ''} to go
-          </Text>
-          <Text style={[styles.countdownSub, { color: colors.textSecondary }]}>
-            Trip starts {fmtDate(trip.startDate)}
-          </Text>
-        </Card>
-      ) : null}
-
-      <Card style={styles.balanceCard}>
-        <Text style={[styles.balanceLabel, { color: colors.textSecondary }]}>My Balance</Text>
-        <Text style={[styles.balanceAmount, { color: balanceColor }]}>{balanceLabel}</Text>
-        {myBalance?.hasPendingConfirmation ? (
-          <Text style={[styles.pendingNote, { color: colors.textMuted }]}>
-            Pending admin confirmation
-          </Text>
-        ) : null}
-      </Card>
-
-      <Card style={styles.statsCard}>
-        <View style={styles.statsRow}>
-          <View style={styles.statBlock}>
-            <Text style={[styles.statBig, { color: colors.text }]}>
-              ${trip.stats.totalSpent.toFixed(0)}
-            </Text>
-            <Text style={[styles.statSmall, { color: colors.textMuted }]}>Total Spent</Text>
+    <View style={styles.actionsRow}>
+      {actions.map((a) => (
+        <Pressable
+          key={a.key}
+          onPress={a.onPress}
+          style={({ pressed }) => [
+            styles.actionPill,
+            {
+              backgroundColor: pressed ? colors.surfaceMuted : colors.surface,
+              borderColor: colors.border,
+              transform: [{ scale: pressed ? 0.96 : 1 }],
+            },
+          ]}>
+          <View style={[styles.actionIcon, { backgroundColor: colors.accentSoft }]}>
+            <Ionicons name={a.icon} size={18} color={colors.accent} />
           </View>
-          <View style={styles.statBlock}>
-            <Text style={[styles.statBig, { color: colors.text }]}>{trip.stats.attendeeCount}</Text>
-            <Text style={[styles.statSmall, { color: colors.textMuted }]}>Attendees</Text>
-          </View>
-          <View style={styles.statBlock}>
-            <Text style={[styles.statBig, { color: colors.text }]}>{trip.stats.expenseCount}</Text>
-            <Text style={[styles.statSmall, { color: colors.textMuted }]}>Expenses</Text>
-          </View>
-        </View>
-      </Card>
-
-      <Card style={styles.travelCard}>
-        <View style={styles.travelHeader}>
-          <Text style={[styles.sectionHeading, { color: colors.text }]}>My Travel Details</Text>
-          <GhostButton onPress={() => router.push(`/(member)/trips/${tripId}/edit-travel` as never)}>
-            Edit
-          </GhostButton>
-        </View>
-        {myTravel?.travelMode ? (
-          <View style={styles.travelRow}>
-            <Ionicons name="airplane-outline" size={15} color={colors.accent} />
-            <Text style={[styles.travelText, { color: colors.textSecondary }]}>{myTravel.travelMode}</Text>
-          </View>
-        ) : null}
-        {myTravel?.arrivalTime ? (
-          <View style={styles.travelRow}>
-            <Ionicons name="arrow-down-circle-outline" size={15} color={colors.accent} />
-            <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-              Arrives {fmtDateTime(myTravel.arrivalTime)}
-              {myTravel.arrivalAirport ? ` · ${myTravel.arrivalAirport}` : ''}
-            </Text>
-          </View>
-        ) : null}
-        {myTravel?.departureTime ? (
-          <View style={styles.travelRow}>
-            <Ionicons name="arrow-up-circle-outline" size={15} color={colors.accent} />
-            <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-              Departs {fmtDateTime(myTravel.departureTime)}
-              {myTravel.departureAirport ? ` · ${myTravel.departureAirport}` : ''}
-            </Text>
-          </View>
-        ) : null}
-        {!myTravel?.travelMode && !myTravel?.arrivalTime && !myTravel?.departureTime ? (
-          <Text style={[styles.travelText, { color: colors.textMuted }]}>No travel details added yet.</Text>
-        ) : null}
-      </Card>
+          <Text style={[styles.actionLabel, { color: colors.text }]}>{a.label}</Text>
+        </Pressable>
+      ))}
     </View>
   );
 }
 
-// ─── Attendees tab ────────────────────────────────────────────────────────────
+// ─── Tab strip ───────────────────────────────────────────────────────────────
+
+type Tab = 'overview' | 'attendees' | 'expenses' | 'balance' | 'albums';
+const TABS: { key: Tab; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { key: 'overview', label: 'Overview', icon: 'compass-outline' },
+  { key: 'attendees', label: 'People', icon: 'people-outline' },
+  { key: 'expenses', label: 'Expenses', icon: 'receipt-outline' },
+  { key: 'balance', label: 'Balance', icon: 'scale-outline' },
+  { key: 'albums', label: 'Albums', icon: 'images-outline' },
+];
+
+function TabStrip({ active, onSelect }: { active: Tab; onSelect: (t: Tab) => void }) {
+  const colors = Colors[resolveThemeMode(useColorScheme())];
+  return (
+    <View style={[styles.tabStripWrap, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.tabStripContent}>
+        {TABS.map((tab) => {
+          const isActive = active === tab.key;
+          return (
+            <Pressable
+              key={tab.key}
+              onPress={() => {
+                void Haptics.selectionAsync();
+                onSelect(tab.key);
+              }}
+              style={[
+                styles.tabItem,
+                {
+                  backgroundColor: isActive ? colors.accentSoft : 'transparent',
+                },
+              ]}>
+              <Ionicons
+                name={tab.icon}
+                size={15}
+                color={isActive ? colors.accent : colors.textSecondary}
+              />
+              <Text
+                style={[
+                  styles.tabLabel,
+                  {
+                    color: isActive ? colors.accent : colors.textSecondary,
+                    fontFamily: isActive ? Fonts.rounded : Fonts.sans,
+                  },
+                ]}>
+                {tab.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
+// ─── Overview content ─────────────────────────────────────────────────────────
+
+function OverviewContent({
+  trip,
+  myBalance,
+  myTravel,
+  expenses,
+  attendees,
+  tripId,
+}: {
+  trip: { startDate: string; endDate: string; status: TripStatus };
+  myBalance: TripBalance | null | undefined;
+  myTravel: { travelMode?: string | null; arrivalTime?: string | null; arrivalAirport?: string | null; departureTime?: string | null; departureAirport?: string | null } | null | undefined;
+  expenses: TripExpense[];
+  attendees: TripAttendee[];
+  tripId: number;
+}) {
+  const colors = Colors[resolveThemeMode(useColorScheme())];
+
+  const recentExpenses = useMemo(
+    () => [...expenses].filter((e) => e.category !== 'FORFEIT_CREDIT').sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3),
+    [expenses],
+  );
+
+  const confirmedCount = attendees.filter((a) => a.status === 'CONFIRMED').length;
+  const invitedCount = attendees.filter((a) => a.status === 'INVITED').length;
+
+  return (
+    <View style={styles.tabContent}>
+      <Card style={styles.travelCard}>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardHeaderLeft}>
+            <Ionicons name="airplane-outline" size={18} color={colors.accent} />
+            <Text style={[styles.cardHeading, { color: colors.text }]}>My Travel</Text>
+          </View>
+          <Pressable
+            onPress={() => router.push(`/(member)/trips/${tripId}/edit-travel` as never)}
+            style={({ pressed }) => [
+              styles.editLink,
+              { backgroundColor: pressed ? colors.accentSoft : 'transparent' },
+            ]}>
+            <Text style={[styles.editLinkText, { color: colors.accent }]}>Edit</Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+          </Pressable>
+        </View>
+        {myTravel?.travelMode || myTravel?.arrivalTime || myTravel?.departureTime ? (
+          <View style={styles.travelDetails}>
+            {myTravel?.travelMode ? (
+              <View style={styles.travelDetailRow}>
+                <Text style={[styles.travelKey, { color: colors.textMuted }]}>Mode</Text>
+                <Text style={[styles.travelVal, { color: colors.text }]}>{myTravel.travelMode}</Text>
+              </View>
+            ) : null}
+            {myTravel?.arrivalTime ? (
+              <View style={styles.travelDetailRow}>
+                <Text style={[styles.travelKey, { color: colors.textMuted }]}>Arrive</Text>
+                <Text style={[styles.travelVal, { color: colors.text }]}>
+                  {fmtDateTime(myTravel.arrivalTime)}
+                  {myTravel.arrivalAirport ? ` · ${myTravel.arrivalAirport}` : ''}
+                </Text>
+              </View>
+            ) : null}
+            {myTravel?.departureTime ? (
+              <View style={styles.travelDetailRow}>
+                <Text style={[styles.travelKey, { color: colors.textMuted }]}>Depart</Text>
+                <Text style={[styles.travelVal, { color: colors.text }]}>
+                  {fmtDateTime(myTravel.departureTime)}
+                  {myTravel.departureAirport ? ` · ${myTravel.departureAirport}` : ''}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => router.push(`/(member)/trips/${tripId}/edit-travel` as never)}
+            style={({ pressed }) => [
+              styles.emptyTravel,
+              { borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+            ]}>
+            <Ionicons name="add" size={18} color={colors.accent} />
+            <Text style={[styles.travelVal, { color: colors.accent }]}>Add my travel details</Text>
+          </Pressable>
+        )}
+      </Card>
+
+      <Card style={styles.summaryCard}>
+        <View style={styles.cardHeaderRow}>
+          <View style={styles.cardHeaderLeft}>
+            <Ionicons name="people-outline" size={18} color={colors.accent} />
+            <Text style={[styles.cardHeading, { color: colors.text }]}>Who&apos;s Going</Text>
+          </View>
+        </View>
+        <View style={styles.summaryRow}>
+          <View style={[styles.summaryChip, { backgroundColor: '#15803D20', borderColor: '#15803D' }]}>
+            <Text style={[styles.summaryChipNum, { color: '#15803D' }]}>{confirmedCount}</Text>
+            <Text style={[styles.summaryChipLabel, { color: colors.textSecondary }]}>Confirmed</Text>
+          </View>
+          {invitedCount > 0 ? (
+            <View style={[styles.summaryChip, { backgroundColor: '#1D4ED820', borderColor: '#1D4ED8' }]}>
+              <Text style={[styles.summaryChipNum, { color: '#1D4ED8' }]}>{invitedCount}</Text>
+              <Text style={[styles.summaryChipLabel, { color: colors.textSecondary }]}>Invited</Text>
+            </View>
+          ) : null}
+        </View>
+      </Card>
+
+      {recentExpenses.length > 0 ? (
+        <Card style={styles.recentCard}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.cardHeaderLeft}>
+              <Ionicons name="time-outline" size={18} color={colors.accent} />
+              <Text style={[styles.cardHeading, { color: colors.text }]}>Recent Expenses</Text>
+            </View>
+          </View>
+          <View style={styles.recentList}>
+            {recentExpenses.map((exp) => {
+              const icon = CATEGORY_ICONS[exp.category] ?? 'ellipsis-horizontal-outline';
+              return (
+                <View key={exp.id} style={styles.recentItem}>
+                  <View style={[styles.recentIcon, { backgroundColor: colors.accentSoft }]}>
+                    <Ionicons name={icon} size={14} color={colors.accent} />
+                  </View>
+                  <View style={styles.recentInfo}>
+                    <Text style={[styles.recentTitle, { color: colors.text }]} numberOfLines={1}>{exp.title}</Text>
+                    <Text style={[styles.recentMeta, { color: colors.textMuted }]}>
+                      {fmtDate(exp.date)}
+                      {exp.paidByMember ? ` · ${exp.paidByMember.name}` : ''}
+                    </Text>
+                  </View>
+                  <Text style={[styles.recentAmount, { color: colors.text }]}>${parseFloat(exp.totalAmount).toFixed(0)}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </Card>
+      ) : null}
+    </View>
+  );
+}
+
+// ─── Attendees content ───────────────────────────────────────────────────────
 
 function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
@@ -326,7 +573,7 @@ function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
   );
 }
 
-function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
+function AttendeesContent({ attendees }: { attendees: TripAttendee[] }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
 
   const rideshareGroups = useMemo(() => {
@@ -348,7 +595,7 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
       ))}
       {rideshareGroups.length > 0 ? (
         <Card style={[styles.rideshareCard, { borderColor: colors.accent }]}>
-          <Text style={[styles.sectionHeading, { color: colors.text }]}>Rideshare Opportunities</Text>
+          <Text style={[styles.cardHeading, { color: colors.text }]}>Rideshare Opportunities</Text>
           <Text style={[styles.travelText, { color: colors.textMuted }]}>People arriving at the same airport</Text>
           {rideshareGroups.map(([airport, group]) => (
             <View key={airport} style={styles.rideshareItem}>
@@ -370,7 +617,7 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
   );
 }
 
-// ─── Expenses tab ─────────────────────────────────────────────────────────────
+// ─── Expenses content ────────────────────────────────────────────────────────
 
 function ExpenseCard({ expense }: { expense: TripExpense }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
@@ -382,7 +629,7 @@ function ExpenseCard({ expense }: { expense: TripExpense }) {
     <Pressable onPress={() => setExpanded((v) => !v)}>
       <Card style={styles.expenseCard}>
         <View style={styles.expenseHeader}>
-          <View style={styles.expenseIcon}>
+          <View style={[styles.expenseIcon, { backgroundColor: colors.accentSoft }]}>
             <Ionicons name={icon} size={18} color={colors.accent} />
           </View>
           <View style={styles.expenseInfo}>
@@ -420,7 +667,7 @@ function ExpenseCard({ expense }: { expense: TripExpense }) {
 
 type ExpenseFilter = 'all' | 'approved' | 'pending';
 
-function ExpensesTab({ expenses, tripId, refetch, tintColor }: { expenses: TripExpense[]; tripId: number; refetch: () => void; tintColor: string }) {
+function ExpensesContent({ expenses }: { expenses: TripExpense[] }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [filter, setFilter] = useState<ExpenseFilter>('all');
 
@@ -443,8 +690,8 @@ function ExpensesTab({ expenses, tripId, refetch, tintColor }: { expenses: TripE
   ];
 
   return (
-    <View style={styles.tabFlex}>
-      <View style={[styles.filterRow, { borderBottomColor: colors.border }]}>
+    <View style={styles.tabContent}>
+      <View style={styles.filterRow}>
         {chips.map((chip) => (
           <Pressable
             key={chip.key}
@@ -466,32 +713,19 @@ function ExpensesTab({ expenses, tripId, refetch, tintColor }: { expenses: TripE
           </Pressable>
         ))}
       </View>
-      <ScrollView
-        automaticallyAdjustContentInsets={false}
-        contentInsetAdjustmentBehavior="never"
-        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={tintColor} />}
-      >
-        <View style={styles.tabContent}>
-          {visible.map((e) => (
-            <ExpenseCard key={e.id} expense={e} />
-          ))}
-          {visible.length === 0 ? (
-            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No expenses.</Text>
-          ) : null}
-        </View>
-      </ScrollView>
-      <Pressable
-        style={[styles.fab, { backgroundColor: colors.accent }]}
-        onPress={() => router.push(`/(member)/trips/${tripId}/submit-expense` as never)}>
-        <Ionicons name="add" size={28} color="#fff" />
-      </Pressable>
+      {visible.map((e) => (
+        <ExpenseCard key={e.id} expense={e} />
+      ))}
+      {visible.length === 0 ? (
+        <Text style={[styles.emptyText, { color: colors.textMuted }]}>No expenses.</Text>
+      ) : null}
     </View>
   );
 }
 
-// ─── Balance tab ──────────────────────────────────────────────────────────────
+// ─── Balance content ─────────────────────────────────────────────────────────
 
-function BalanceTab({
+function BalanceContent({
   balances,
   myMemberId,
 }: {
@@ -500,7 +734,6 @@ function BalanceTab({
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [showSettlement, setShowSettlement] = useState(false);
-
   const settlement = useMemo(() => computeSettlement(balances), [balances]);
 
   return (
@@ -535,8 +768,8 @@ function BalanceTab({
       {settlement.length > 0 ? (
         <Card style={styles.settlementCard}>
           <Pressable onPress={() => setShowSettlement((v) => !v)} style={styles.settlementHeader}>
-            <Text style={[styles.sectionHeading, { color: colors.text }]}>
-              Settlement Plan ({settlement.length} transaction{settlement.length !== 1 ? 's' : ''})
+            <Text style={[styles.cardHeading, { color: colors.text }]}>
+              Settlement Plan ({settlement.length})
             </Text>
             <Ionicons
               name={showSettlement ? 'chevron-up' : 'chevron-down'}
@@ -558,19 +791,19 @@ function BalanceTab({
               ))
             : null}
         </Card>
-      ) : (
+      ) : balances.length > 0 ? (
         <Card style={styles.settledCard}>
           <Ionicons name="checkmark-circle" size={24} color={colors.success} style={{ alignSelf: 'center' }} />
           <Text style={[styles.settledText, { color: colors.success }]}>Everyone is settled up!</Text>
         </Card>
-      )}
+      ) : null}
     </View>
   );
 }
 
-// ─── Albums tab ───────────────────────────────────────────────────────────────
+// ─── Albums content ──────────────────────────────────────────────────────────
 
-function AlbumsTab({
+function AlbumsContent({
   albums,
   tripId,
 }: {
@@ -686,19 +919,19 @@ function useTripQueries(tripId: number) {
 
 export default function TripDetailScreen() {
   const colors = Colors[resolveThemeMode(useColorScheme())];
+  const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const tripId = parseInt(id ?? '0', 10);
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const scrollRef = useRef<ScrollView>(null);
+  const tabStripOffsetY = useRef(0);
 
   const { detail, attendees, expenses, balances, myBalance, albums, myTravel } =
     useTripQueries(tripId);
 
-  const myMemberId = useMemo(() => {
-    const mb = myBalance.data;
-    return mb?.memberId ?? null;
-  }, [myBalance.data]);
-
+  const myMemberId = useMemo(() => myBalance.data?.memberId ?? null, [myBalance.data]);
   const isLoading = detail.isLoading;
+  const trip = detail.data;
 
   function refetchAll() {
     void detail.refetch();
@@ -710,95 +943,96 @@ export default function TripDetailScreen() {
     void myTravel.refetch();
   }
 
-  if (isLoading) {
+  function handleSelectTab(t: Tab) {
+    setActiveTab(t);
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({ y: tabStripOffsetY.current, animated: true });
+    });
+  }
+
+  if (isLoading || !trip) {
     return (
-      <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <View style={[styles.root, { backgroundColor: colors.background, paddingTop: insets.top }]}>
         <View style={styles.loadingCenter}>
           <ActivityIndicator color={colors.accent} size="large" />
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
-  const trip = detail.data;
-  const tripStatus = trip?.status ?? 'PLANNING';
-  const tripStatusBg = TRIP_STATUS_COLORS[tripStatus];
-
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.headerArea}>
-        <BackLink />
-        <View style={styles.tripTitleRow}>
-          <Text style={[styles.screenTitle, { color: colors.text }]} numberOfLines={2}>
-            {trip?.title ?? '—'}
-          </Text>
-          <Badge label={tripStatus} bg={tripStatusBg} />
+    <View style={[styles.root, { backgroundColor: colors.background }]}>
+      <ScrollView
+        ref={scrollRef}
+        stickyHeaderIndices={[1]}
+        showsVerticalScrollIndicator={false}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+        contentContainerStyle={{
+          paddingTop: insets.top + Spacing.two,
+          paddingBottom: BottomTabInset + 56,
+        }}
+        refreshControl={
+          <RefreshControl
+            refreshing={detail.isRefetching}
+            onRefresh={refetchAll}
+            tintColor={colors.accent}
+            progressViewOffset={insets.top}
+          />
+        }>
+        <View style={styles.headerSection}>
+          <BackLink />
+          <TripHero trip={trip} myBalance={myBalance.data} />
+          <QuickActions tripId={tripId} />
         </View>
-        {trip ? (
-          <View style={styles.metaRow}>
-            {trip.location ? (
-              <View style={styles.inlineRow}>
-                <Ionicons name="location-outline" size={13} color={colors.accent} />
-                <Text style={[styles.metaText, { color: colors.textSecondary }]}>{trip.location}</Text>
-              </View>
-            ) : null}
-            <View style={styles.inlineRow}>
-              <Ionicons name="calendar-outline" size={13} color={colors.accent} />
-              <Text style={[styles.metaText, { color: colors.textSecondary }]}>
-                {fmtDate(trip.startDate)} – {fmtDate(trip.endDate)}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-      </View>
 
-      <TabStrip active={activeTab} onSelect={setActiveTab} />
+        <View
+          onLayout={(e) => {
+            tabStripOffsetY.current = e.nativeEvent.layout.y;
+          }}>
+          <TabStrip active={activeTab} onSelect={handleSelectTab} />
+        </View>
 
-      <View style={styles.flex}>
-        {activeTab === 'overview' ? (
-          <ScrollView
-            automaticallyAdjustContentInsets={false}
-            contentInsetAdjustmentBehavior="never"
-            refreshControl={<RefreshControl refreshing={detail.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
-          >
-            <OverviewTab trip={trip} myBalance={myBalance.data} myTravel={myTravel.data} tripId={tripId} />
-          </ScrollView>
-        ) : activeTab === 'attendees' ? (
-          <ScrollView
-            automaticallyAdjustContentInsets={false}
-            contentInsetAdjustmentBehavior="never"
-            refreshControl={<RefreshControl refreshing={attendees.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
-          >
-            <AttendeesTab attendees={attendees.data ?? []} />
-          </ScrollView>
-        ) : activeTab === 'expenses' ? (
-          <ExpensesTab expenses={expenses.data ?? []} tripId={tripId} refetch={refetchAll} tintColor={colors.accent} />
-        ) : activeTab === 'balance' ? (
-          <ScrollView
-            automaticallyAdjustContentInsets={false}
-            contentInsetAdjustmentBehavior="never"
-            refreshControl={<RefreshControl refreshing={balances.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
-          >
-            <BalanceTab balances={balances.data ?? []} myMemberId={myMemberId} />
-          </ScrollView>
-        ) : (
-          <ScrollView
-            automaticallyAdjustContentInsets={false}
-            contentInsetAdjustmentBehavior="never"
-            refreshControl={<RefreshControl refreshing={albums.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
-          >
-            <AlbumsTab albums={albums.data ?? []} tripId={tripId} />
-          </ScrollView>
-        )}
-      </View>
-    </SafeAreaView>
+        <View>
+          {activeTab === 'overview' ? (
+            <OverviewContent
+              trip={trip}
+              myBalance={myBalance.data}
+              myTravel={myTravel.data}
+              expenses={expenses.data ?? []}
+              attendees={attendees.data ?? []}
+              tripId={tripId}
+            />
+          ) : activeTab === 'attendees' ? (
+            <AttendeesContent attendees={attendees.data ?? []} />
+          ) : activeTab === 'expenses' ? (
+            <ExpensesContent expenses={expenses.data ?? []} />
+          ) : activeTab === 'balance' ? (
+            <BalanceContent balances={balances.data ?? []} myMemberId={myMemberId} />
+          ) : (
+            <AlbumsContent albums={albums.data ?? []} tripId={tripId} />
+          )}
+        </View>
+      </ScrollView>
+
+      {activeTab === 'expenses' ? (
+        <Pressable
+          style={[styles.fab, { backgroundColor: colors.accent, bottom: BottomTabInset + 36 }]}
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            router.push(`/(member)/trips/${tripId}/submit-expense` as never);
+          }}>
+          <Ionicons name="add" size={28} color="#fff" />
+        </Pressable>
+      ) : null}
+    </View>
   );
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  safeArea: {
+  root: {
     flex: 1,
   },
   loadingCenter: {
@@ -806,155 +1040,301 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerArea: {
+  headerSection: {
     paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.one,
-    gap: Spacing.one,
+    gap: Spacing.three,
+    paddingBottom: Spacing.three,
   },
-  tripTitleRow: {
+  // Hero
+  hero: {
+    borderRadius: 28,
+    padding: Spacing.four,
+    gap: Spacing.three,
+    overflow: 'hidden',
+  },
+  heroTop: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: Spacing.two,
     flexWrap: 'wrap',
+    gap: Spacing.two,
   },
-  screenTitle: {
-    flex: 1,
-    fontFamily: Fonts.rounded,
-    fontSize: 26,
-    lineHeight: 32,
-  },
-  metaRow: {
-    gap: 4,
-  },
-  inlineRow: {
+  heroPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    maxWidth: '80%',
   },
-  metaText: {
-    fontFamily: Fonts.sans,
-    fontSize: 13,
+  heroDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
   },
-  tabStrip: {
-    borderBottomWidth: 1,
-    marginTop: Spacing.one,
-    height: 48,
+  heroPillText: {
+    color: '#fff',
+    fontFamily: Fonts.rounded,
+    fontSize: 11,
+    letterSpacing: 0.4,
   },
-  tabStripContent: {
-    paddingHorizontal: Spacing.two,
-    gap: 0,
+  heroTitle: {
+    color: '#fff',
+    fontFamily: Fonts.rounded,
+    fontSize: 28,
+    lineHeight: 32,
+    letterSpacing: -0.5,
   },
-  tabItem: {
-    paddingHorizontal: Spacing.three,
-    paddingVertical: 12,
-    marginBottom: -1,
-  },
-  tabLabel: {
-    fontSize: 15,
-  },
-  flex: {
-    flex: 1,
-  },
-  tabContent: {
-    paddingHorizontal: Spacing.three,
-    paddingTop: Spacing.two,
-    paddingBottom: 124,
+  heroCountdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.three,
   },
-  tabFlex: {
-    flex: 1,
-  },
-  filterRow: {
-    flexDirection: 'row',
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    borderBottomWidth: 1,
-  },
-  filterChip: {
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  filterChipText: {
+  heroCountdownNumber: {
+    color: '#fff',
     fontFamily: Fonts.rounded,
+    fontSize: 56,
+    lineHeight: 60,
+    letterSpacing: -2,
+  },
+  heroCountdownRight: {
+    flex: 1,
+    gap: 2,
+  },
+  heroCountdownSub: {
+    color: 'rgba(255,255,255,0.9)',
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
+  },
+  heroCountdownDates: {
+    color: 'rgba(255,255,255,0.75)',
+    fontFamily: Fonts.sans,
     fontSize: 13,
   },
-  // Overview
-  highlightCard: {
-    borderWidth: 1,
-    borderRadius: 20,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  countdownLabel: {
-    fontFamily: Fonts.rounded,
-    fontSize: 28,
-  },
-  countdownSub: {
-    fontFamily: Fonts.sans,
-    fontSize: 14,
-  },
-  balanceCard: {
-    gap: Spacing.one,
-  },
-  balanceLabel: {
-    fontFamily: Fonts.sans,
-    fontSize: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  balanceAmount: {
-    fontFamily: Fonts.rounded,
-    fontSize: 28,
-  },
-  pendingNote: {
-    fontFamily: Fonts.sans,
-    fontSize: 12,
-  },
-  statsCard: {},
-  statsRow: {
+  heroStatsRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.14)',
+    borderRadius: 16,
+    paddingVertical: Spacing.two,
   },
-  statBlock: {
+  heroStat: {
     flex: 1,
     alignItems: 'center',
     gap: 2,
   },
-  statBig: {
+  heroStatBig: {
+    color: '#fff',
     fontFamily: Fonts.rounded,
-    fontSize: 22,
+    fontSize: 16,
   },
-  statSmall: {
+  heroStatSmall: {
+    color: 'rgba(255,255,255,0.7)',
     fontFamily: Fonts.sans,
-    fontSize: 11,
+    fontSize: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
-  travelCard: {
+  heroStatDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  phaseStrip: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: Spacing.one,
+  },
+  phaseItem: {
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+  },
+  phaseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  phaseLabel: {
+    fontSize: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  // Quick actions
+  actionsRow: {
+    flexDirection: 'row',
     gap: Spacing.two,
   },
-  travelHeader: {
+  actionPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: Spacing.two,
+  },
+  actionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionLabel: {
+    flex: 1,
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+    lineHeight: 14,
+  },
+  // Tabs
+  tabStripWrap: {
+    borderBottomWidth: 1,
+    paddingVertical: Spacing.two,
+    zIndex: 10,
+  },
+  tabStripContent: {
+    paddingHorizontal: Spacing.three,
+    gap: 6,
+  },
+  tabItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  tabLabel: {
+    fontSize: 13,
+  },
+  // Tab content
+  tabContent: {
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+    gap: Spacing.three,
+  },
+  cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  travelRow: {
+  cardHeaderLeft: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 6,
+    alignItems: 'center',
+    gap: Spacing.two,
   },
-  travelText: {
+  cardHeading: {
+    fontFamily: Fonts.rounded,
+    fontSize: 15,
+  },
+  editLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  editLinkText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  // Travel card
+  travelCard: {
+    gap: Spacing.two,
+  },
+  travelDetails: {
+    gap: Spacing.one,
+  },
+  travelDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  travelKey: {
+    fontFamily: Fonts.sans,
+    fontSize: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    width: 56,
+  },
+  travelVal: {
     flex: 1,
     fontFamily: Fonts.sans,
     fontSize: 14,
-    lineHeight: 20,
   },
-  sectionHeading: {
+  emptyTravel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    paddingVertical: Spacing.two,
+  },
+  // Summary card
+  summaryCard: {
+    gap: Spacing.two,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  summaryChip: {
+    flex: 1,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: Spacing.two,
+    alignItems: 'center',
+    gap: 2,
+  },
+  summaryChipNum: {
     fontFamily: Fonts.rounded,
-    fontSize: 16,
+    fontSize: 22,
+  },
+  summaryChipLabel: {
+    fontFamily: Fonts.sans,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  // Recent expenses
+  recentCard: {
+    gap: Spacing.two,
+  },
+  recentList: {
+    gap: Spacing.two,
+  },
+  recentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  recentIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recentInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  recentTitle: {
+    fontFamily: Fonts.rounded,
+    fontSize: 14,
+  },
+  recentMeta: {
+    fontFamily: Fonts.sans,
+    fontSize: 11,
+  },
+  recentAmount: {
+    fontFamily: Fonts.rounded,
+    fontSize: 14,
   },
   // Attendees
   attendeeCard: {
@@ -971,6 +1351,17 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.rounded,
     fontSize: 17,
   },
+  travelRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+  },
+  travelText: {
+    flex: 1,
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+    lineHeight: 20,
+  },
   rideshareCard: {
     borderWidth: 1,
     gap: Spacing.two,
@@ -981,6 +1372,20 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   // Expenses
+  filterRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+  },
+  filterChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  filterChipText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
   expenseCard: {
     gap: Spacing.two,
   },
@@ -1036,15 +1441,14 @@ const styles = StyleSheet.create({
   fab: {
     position: 'absolute',
     right: Spacing.four,
-    bottom: 100,
     width: 56,
     height: 56,
     borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
@@ -1066,6 +1470,10 @@ const styles = StyleSheet.create({
   balanceSub: {
     fontFamily: Fonts.sans,
     fontSize: 12,
+  },
+  balanceAmount: {
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
   },
   settlementCard: {
     gap: Spacing.two,
