@@ -350,12 +350,16 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
       {rideshareGroups.length > 0 ? (
         <Card style={[styles.rideshareCard, { borderColor: colors.accent }]}>
           <Text style={[styles.sectionHeading, { color: colors.text }]}>Rideshare Opportunities</Text>
+          <Text style={[styles.travelText, { color: colors.textMuted }]}>People arriving at the same airport</Text>
           {rideshareGroups.map(([airport, group]) => (
             <View key={airport} style={styles.rideshareItem}>
               <Ionicons name="car-outline" size={15} color={colors.accent} />
-              <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-                {group.length} people arriving at {airport} — consider sharing a ride
-              </Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.travelText, { color: colors.text, fontFamily: Fonts.rounded }]}>{airport}</Text>
+                <Text style={[styles.travelText, { color: colors.textSecondary }]}>
+                  {group.map((a) => a.member?.name ?? a.legend?.name ?? a.guestName ?? 'Guest').join(' · ')}
+                </Text>
+              </View>
             </View>
           ))}
         </Card>
@@ -798,9 +802,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerArea: {
-    paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.one,
     gap: Spacing.one,
   },
   tripTitleRow: {
@@ -847,7 +851,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabContent: {
-    padding: Spacing.four,
+    padding: Spacing.three,
     paddingBottom: 124,
     gap: Spacing.three,
   },
@@ -857,7 +861,7 @@ const styles = StyleSheet.create({
   filterRow: {
     flexDirection: 'row',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.four,
+    paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two,
     borderBottomWidth: 1,
   },
