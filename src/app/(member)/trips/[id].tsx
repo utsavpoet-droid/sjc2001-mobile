@@ -753,6 +753,8 @@ export default function TripDetailScreen() {
         style={styles.flex}
         data={[activeTab]}
         keyExtractor={(item) => item}
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
         renderItem={() => null}
         refreshControl={
           <RefreshControl
@@ -833,7 +835,7 @@ const styles = StyleSheet.create({
   },
   tabStrip: {
     borderBottomWidth: 1,
-    marginTop: Spacing.two,
+    marginTop: Spacing.one,
   },
   tabStripContent: {
     paddingHorizontal: Spacing.two,
@@ -851,7 +853,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tabContent: {
-    padding: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.two,
     paddingBottom: 124,
     gap: Spacing.three,
   },
