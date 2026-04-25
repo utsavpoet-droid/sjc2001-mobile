@@ -2,7 +2,7 @@
   "expo": {
     "name": "SJC 2001",
     "slug": "sjc2001-mobile",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "sjc2001",
