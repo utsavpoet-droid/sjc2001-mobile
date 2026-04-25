@@ -420,7 +420,7 @@ function ExpenseCard({ expense }: { expense: TripExpense }) {
 
 type ExpenseFilter = 'all' | 'approved' | 'pending';
 
-function ExpensesTab({ expenses, tripId }: { expenses: TripExpense[]; tripId: number }) {
+function ExpensesTab({ expenses, tripId, refetch, tintColor }: { expenses: TripExpense[]; tripId: number; refetch: () => void; tintColor: string }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [filter, setFilter] = useState<ExpenseFilter>('all');
 
@@ -466,14 +466,20 @@ function ExpensesTab({ expenses, tripId }: { expenses: TripExpense[]; tripId: nu
           </Pressable>
         ))}
       </View>
-      <View style={styles.tabContent}>
-        {visible.map((e) => (
-          <ExpenseCard key={e.id} expense={e} />
-        ))}
-        {visible.length === 0 ? (
-          <Text style={[styles.emptyText, { color: colors.textMuted }]}>No expenses.</Text>
-        ) : null}
-      </View>
+      <ScrollView
+        automaticallyAdjustContentInsets={false}
+        contentInsetAdjustmentBehavior="never"
+        refreshControl={<RefreshControl refreshing={false} onRefresh={refetch} tintColor={tintColor} />}
+      >
+        <View style={styles.tabContent}>
+          {visible.map((e) => (
+            <ExpenseCard key={e.id} expense={e} />
+          ))}
+          {visible.length === 0 ? (
+            <Text style={[styles.emptyText, { color: colors.textMuted }]}>No expenses.</Text>
+          ) : null}
+        </View>
+      </ScrollView>
       <Pressable
         style={[styles.fab, { backgroundColor: colors.accent }]}
         onPress={() => router.push(`/(member)/trips/${tripId}/submit-expense` as never)}>
@@ -748,39 +754,43 @@ export default function TripDetailScreen() {
 
       <TabStrip active={activeTab} onSelect={setActiveTab} />
 
-      <ScrollView
-        style={styles.flex}
-        automaticallyAdjustContentInsets={false}
-        contentInsetAdjustmentBehavior="never"
-        refreshControl={
-          <RefreshControl
-            refreshing={detail.isRefetching}
-            onRefresh={refetchAll}
-            tintColor={colors.accent}
-          />
-        }
-      >
+      <View style={styles.flex}>
         {activeTab === 'overview' ? (
-          <OverviewTab
-            trip={trip}
-            myBalance={myBalance.data}
-            myTravel={myTravel.data}
-            tripId={tripId}
-          />
-        ) : null}
-        {activeTab === 'attendees' ? (
-          <AttendeesTab attendees={attendees.data ?? []} />
-        ) : null}
-        {activeTab === 'expenses' ? (
-          <ExpensesTab expenses={expenses.data ?? []} tripId={tripId} />
-        ) : null}
-        {activeTab === 'balance' ? (
-          <BalanceTab balances={balances.data ?? []} myMemberId={myMemberId} />
-        ) : null}
-        {activeTab === 'albums' ? (
-          <AlbumsTab albums={albums.data ?? []} tripId={tripId} />
-        ) : null}
-      </ScrollView>
+          <ScrollView
+            automaticallyAdjustContentInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            refreshControl={<RefreshControl refreshing={detail.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
+          >
+            <OverviewTab trip={trip} myBalance={myBalance.data} myTravel={myTravel.data} tripId={tripId} />
+          </ScrollView>
+        ) : activeTab === 'attendees' ? (
+          <ScrollView
+            automaticallyAdjustContentInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            refreshControl={<RefreshControl refreshing={attendees.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
+          >
+            <AttendeesTab attendees={attendees.data ?? []} />
+          </ScrollView>
+        ) : activeTab === 'expenses' ? (
+          <ExpensesTab expenses={expenses.data ?? []} tripId={tripId} refetch={refetchAll} tintColor={colors.accent} />
+        ) : activeTab === 'balance' ? (
+          <ScrollView
+            automaticallyAdjustContentInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            refreshControl={<RefreshControl refreshing={balances.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
+          >
+            <BalanceTab balances={balances.data ?? []} myMemberId={myMemberId} />
+          </ScrollView>
+        ) : (
+          <ScrollView
+            automaticallyAdjustContentInsets={false}
+            contentInsetAdjustmentBehavior="never"
+            refreshControl={<RefreshControl refreshing={albums.isRefetching} onRefresh={refetchAll} tintColor={colors.accent} />}
+          >
+            <AlbumsTab albums={albums.data ?? []} tripId={tripId} />
+          </ScrollView>
+        )}
+      </View>
     </SafeAreaView>
   );
 }

@@ -63,6 +63,7 @@ export default function MemberTabsLayout() {
       <Tabs.Screen name="stories/index" options={{ title: 'Stories' }} />
       <Tabs.Screen name="gallery/index" options={{ title: 'Gallery' }} />
       <Tabs.Screen name="trips/index" options={{ title: 'Trips' }} />
+      <Tabs.Screen name="trips/[id]" options={{ href: null, title: '' }} />
       <Tabs.Screen name="account/index" options={{ title: 'My Profile' }} />
       <Tabs.Screen name="account/profile" options={{ href: null }} />
     </Tabs>
