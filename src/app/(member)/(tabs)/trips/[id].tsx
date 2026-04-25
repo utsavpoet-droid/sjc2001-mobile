@@ -839,6 +839,7 @@ const styles = StyleSheet.create({
   tabStrip: {
     borderBottomWidth: 1,
     marginTop: Spacing.one,
+    height: 48,
   },
   tabStripContent: {
     paddingHorizontal: Spacing.two,
