@@ -4,7 +4,6 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -78,26 +77,26 @@ function daysUntil(d: string): number {
 
 // ─── Badge helpers ────────────────────────────────────────────────────────────
 
-const TRIP_STATUS_COLORS: Record<TripStatus, { bg: string; text: string }> = {
-  PLANNING: { bg: '#1D4ED8', text: '#BFDBFE' },
-  ACTIVE: { bg: '#15803D', text: '#BBF7D0' },
-  RECONCILING: { bg: '#B45309', text: '#FDE68A' },
-  SETTLED: { bg: '#475569', text: '#CBD5E1' },
-  CANCELLED: { bg: '#B91C1C', text: '#FECACA' },
+const TRIP_STATUS_COLORS: Record<TripStatus, string> = {
+  PLANNING:    '#1D4ED8',
+  ACTIVE:      '#15803D',
+  RECONCILING: '#B45309',
+  SETTLED:     '#475569',
+  CANCELLED:   '#B91C1C',
 };
 
-const ATTENDEE_STATUS_COLORS: Record<AttendeeStatus, { bg: string; text: string }> = {
-  CONFIRMED: { bg: '#15803D', text: '#BBF7D0' },
-  INVITED: { bg: '#1D4ED8', text: '#BFDBFE' },
-  DECLINED: { bg: '#475569', text: '#CBD5E1' },
-  FORFEITED: { bg: '#B91C1C', text: '#FECACA' },
+const ATTENDEE_STATUS_COLORS: Record<AttendeeStatus, string> = {
+  CONFIRMED: '#15803D',
+  INVITED:   '#1D4ED8',
+  DECLINED:  '#475569',
+  FORFEITED: '#B91C1C',
 };
 
-const EXPENSE_STATUS_COLORS: Record<ExpenseStatus, { bg: string; text: string }> = {
-  APPROVED: { bg: '#15803D', text: '#BBF7D0' },
-  PENDING_REVIEW: { bg: '#B45309', text: '#FDE68A' },
-  FLAGGED: { bg: '#B91C1C', text: '#FECACA' },
-  REJECTED: { bg: '#475569', text: '#CBD5E1' },
+const EXPENSE_STATUS_COLORS: Record<ExpenseStatus, string> = {
+  APPROVED:       '#15803D',
+  PENDING_REVIEW: '#B45309',
+  FLAGGED:        '#B91C1C',
+  REJECTED:       '#475569',
 };
 
 const CATEGORY_ICONS: Record<ExpenseCategory, keyof typeof Ionicons.glyphMap> = {
@@ -291,13 +290,13 @@ function OverviewTab({
 function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const name = attendee.member?.name ?? attendee.legend?.name ?? attendee.guestName ?? 'Guest';
-  const sc = ATTENDEE_STATUS_COLORS[attendee.status];
+  const bg = ATTENDEE_STATUS_COLORS[attendee.status];
 
   return (
     <Card style={styles.attendeeCard}>
       <View style={styles.attendeeHeader}>
         <Text style={[styles.attendeeName, { color: colors.text }]}>{name}</Text>
-        <Badge label={attendee.status} bg={sc.bg} textColor={sc.text} />
+        <Badge label={attendee.status} bg={bg} />
       </View>
       {attendee.travelMode ? (
         <View style={styles.travelRow}>
@@ -376,7 +375,7 @@ function AttendeesTab({ attendees }: { attendees: TripAttendee[] }) {
 function ExpenseCard({ expense }: { expense: TripExpense }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [expanded, setExpanded] = useState(false);
-  const sc = EXPENSE_STATUS_COLORS[expense.status];
+  const expBg = EXPENSE_STATUS_COLORS[expense.status];
   const icon = CATEGORY_ICONS[expense.category] ?? 'ellipsis-horizontal-outline';
 
   return (
@@ -397,7 +396,7 @@ function ExpenseCard({ expense }: { expense: TripExpense }) {
             <Text style={[styles.expenseAmount, { color: colors.text }]}>
               ${parseFloat(expense.totalAmount).toFixed(2)}
             </Text>
-            <Badge label={expense.status.replace('_', ' ')} bg={sc.bg} textColor={sc.text} />
+            <Badge label={expense.status.replace('_', ' ')} bg={expBg} />
           </View>
         </View>
         {expanded && expense.splits.length > 0 ? (
@@ -717,7 +716,7 @@ export default function TripDetailScreen() {
 
   const trip = detail.data;
   const tripStatus = trip?.status ?? 'PLANNING';
-  const sc = TRIP_STATUS_COLORS[tripStatus];
+  const tripStatusBg = TRIP_STATUS_COLORS[tripStatus];
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -727,7 +726,7 @@ export default function TripDetailScreen() {
           <Text style={[styles.screenTitle, { color: colors.text }]} numberOfLines={2}>
             {trip?.title ?? '—'}
           </Text>
-          <Badge label={tripStatus} bg={sc.bg} textColor={sc.text} />
+          <Badge label={tripStatus} bg={tripStatusBg} />
         </View>
         {trip ? (
           <View style={styles.metaRow}>
@@ -749,13 +748,10 @@ export default function TripDetailScreen() {
 
       <TabStrip active={activeTab} onSelect={setActiveTab} />
 
-      <FlatList
+      <ScrollView
         style={styles.flex}
-        data={[activeTab]}
-        keyExtractor={(item) => item}
         automaticallyAdjustContentInsets={false}
         contentInsetAdjustmentBehavior="never"
-        renderItem={() => null}
         refreshControl={
           <RefreshControl
             refreshing={detail.isRefetching}
@@ -763,31 +759,28 @@ export default function TripDetailScreen() {
             tintColor={colors.accent}
           />
         }
-        ListHeaderComponent={
-          <>
-            {activeTab === 'overview' ? (
-              <OverviewTab
-                trip={trip}
-                myBalance={myBalance.data}
-                myTravel={myTravel.data}
-                tripId={tripId}
-              />
-            ) : null}
-            {activeTab === 'attendees' ? (
-              <AttendeesTab attendees={attendees.data ?? []} />
-            ) : null}
-            {activeTab === 'expenses' ? (
-              <ExpensesTab expenses={expenses.data ?? []} tripId={tripId} />
-            ) : null}
-            {activeTab === 'balance' ? (
-              <BalanceTab balances={balances.data ?? []} myMemberId={myMemberId} />
-            ) : null}
-            {activeTab === 'albums' ? (
-              <AlbumsTab albums={albums.data ?? []} tripId={tripId} />
-            ) : null}
-          </>
-        }
-      />
+      >
+        {activeTab === 'overview' ? (
+          <OverviewTab
+            trip={trip}
+            myBalance={myBalance.data}
+            myTravel={myTravel.data}
+            tripId={tripId}
+          />
+        ) : null}
+        {activeTab === 'attendees' ? (
+          <AttendeesTab attendees={attendees.data ?? []} />
+        ) : null}
+        {activeTab === 'expenses' ? (
+          <ExpensesTab expenses={expenses.data ?? []} tripId={tripId} />
+        ) : null}
+        {activeTab === 'balance' ? (
+          <BalanceTab balances={balances.data ?? []} myMemberId={myMemberId} />
+        ) : null}
+        {activeTab === 'albums' ? (
+          <AlbumsTab albums={albums.data ?? []} tripId={tripId} />
+        ) : null}
+      </ScrollView>
     </SafeAreaView>
   );
 }
