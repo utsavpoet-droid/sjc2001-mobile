@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import React, { useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Linking, StyleSheet, Text, View } from 'react-native';
 
 import { BackLink } from '@/components/ui/back-link';
 import { Card, Input, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
@@ -216,6 +216,21 @@ export default function SettingsScreen() {
           onPress={() => notificationsMutation.mutate()}
         >
           {notificationsEnabled ? 'Notifications enabled' : 'Enable notifications'}
+        </PrimaryButton>
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={[styles.heading, { color: colors.text }]}>Child Safety</Text>
+        <Text style={[styles.caption, { color: colors.textSecondary }]}>
+          If you encounter any content or behaviour involving child sexual abuse or exploitation, report it immediately. All reports are confidential and acted on promptly.
+        </Text>
+        <PrimaryButton
+          onPress={() =>
+            void Linking.openURL(
+              'mailto:utsavpoet@gmail.com?subject=Child%20Safety%20Concern%20%E2%80%94%20Silver%20Circle&body=Please%20describe%20the%20concern%20in%20detail%3A%0A%0A',
+            )
+          }>
+          Report a Child Safety Concern
         </PrimaryButton>
       </Card>
 
