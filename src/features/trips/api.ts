@@ -100,6 +100,18 @@ export async function reportPayment(
   });
 }
 
+export async function reportDirectPayment(
+  token: string,
+  tripId: number,
+  body: { toMemberId: number; amount: number; note?: string },
+): Promise<unknown> {
+  return requestContentJson(`/events/trip/${tripId}/direct-payments`, {
+    method: 'POST',
+    headers: authJson(token),
+    body: JSON.stringify(body),
+  });
+}
+
 export async function addPhotoToAlbum(
   token: string,
   tripId: number,
