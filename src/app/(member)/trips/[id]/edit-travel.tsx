@@ -47,11 +47,12 @@ function toLocalISO(d: Date): string {
   );
 }
 
-// Parse stored datetime string back to local Date
+// Parse stored datetime string back to a Date treating it as wall-clock time.
+// Strip any timezone suffix so the time is never converted — 09:55 stays 09:55.
 function parseToDate(s: string | null | undefined): Date | null {
   if (!s) return null;
-  // Handles "2026-05-07T08:02:00" (no timezone = treat as local)
-  const d = new Date(s.includes('Z') || s.includes('+') ? s : s + 'Z');
+  const naive = s.replace(/Z$/, '').replace(/\.\d+$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
+  const d = new Date(naive);
   return isNaN(d.getTime()) ? null : d;
 }
 

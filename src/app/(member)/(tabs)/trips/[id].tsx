@@ -69,7 +69,13 @@ function fmtDateShort(d: string): string {
 
 function fmtDateTime(d: string): string {
   if (d.includes('T')) {
-    return new Date(d).toLocaleString('en-US', {
+    // Strip timezone suffix so the stored wall-clock time is displayed
+    // exactly as entered by admin — no local-timezone conversion.
+    const naive = d.replace(/Z$/, '').replace(/\.\d+$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
+    const [datePart, timePart] = naive.split('T');
+    const [y, mo, day] = datePart.split('-').map(Number);
+    const [h, min] = timePart.split(':').map(Number);
+    return new Date(y, mo - 1, day, h, min).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
