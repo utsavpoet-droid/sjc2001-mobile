@@ -69,20 +69,31 @@ function fmtDateShort(d: string): string {
 
 function fmtDateTime(d: string): string {
   if (d.includes('T')) {
-    // Strip timezone suffix so the stored wall-clock time is displayed
-    // exactly as entered by admin — no local-timezone conversion.
-    const naive = d.replace(/Z$/, '').replace(/\.\d+$/, '').replace(/[+-]\d{2}:\d{2}$/, '');
-    const [datePart, timePart] = naive.split('T');
-    const [y, mo, day] = datePart.split('-').map(Number);
-    const [h, min] = timePart.split(':').map(Number);
-    return new Date(y, mo - 1, day, h, min).toLocaleString('en-US', {
+    return new Date(d).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      timeZone: 'UTC',
     });
   }
   return fmtDate(d);
+}
+
+function fmtTimeOnly(d: string): string {
+  return new Date(d).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'UTC',
+  });
+}
+
+function fmtDayShort(d: string): string {
+  return new Date(d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
 }
 
 function daysUntil(d: string): number {
@@ -579,43 +590,232 @@ function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
   );
 }
 
-function AttendeesContent({ attendees }: { attendees: TripAttendee[] }) {
+// Cluster by airport AND time proximity — folks arriving 12:00 vs 14:30
+// at the same airport shouldn't be lumped into one carpool.
+const RIDE_WINDOW_MS = 90 * 60 * 1000;
+
+function attendeeName(a: TripAttendee): string {
+  return a.member?.name ?? a.legend?.name ?? a.guestName ?? 'Guest';
+}
+
+type CarpoolCluster = {
+  key: string;
+  airport: string;
+  date: string;
+  windowLabel: string;
+  people: TripAttendee[];
+};
+
+function buildCarpoolClusters(attendees: TripAttendee[]): CarpoolCluster[] {
+  const byKey = new Map<string, TripAttendee[]>();
+  for (const a of attendees) {
+    if (!a.arrivalAirport || !a.arrivalTime) continue;
+    if (a.status === 'DECLINED' || a.status === 'FORFEITED') continue;
+    const dayKey = a.arrivalTime.slice(0, 10);
+    const key = `${a.arrivalAirport.toUpperCase()}|${dayKey}`;
+    const list = byKey.get(key) ?? [];
+    list.push(a);
+    byKey.set(key, list);
+  }
+
+  const clusters: CarpoolCluster[] = [];
+  for (const [key, list] of byKey) {
+    const [airport, date] = key.split('|');
+    const sorted = [...list].sort(
+      (a, b) => new Date(a.arrivalTime!).getTime() - new Date(b.arrivalTime!).getTime(),
+    );
+
+    let bucket: TripAttendee[] = [];
+    const flush = () => {
+      if (bucket.length >= 2) {
+        const first = bucket[0].arrivalTime!;
+        const last = bucket[bucket.length - 1].arrivalTime!;
+        const windowLabel =
+          first === last ? fmtTimeOnly(first) : `${fmtTimeOnly(first)} – ${fmtTimeOnly(last)}`;
+        clusters.push({
+          key: `${airport}-${date}-${first}`,
+          airport,
+          date,
+          windowLabel,
+          people: bucket,
+        });
+      }
+      bucket = [];
+    };
+
+    for (const a of sorted) {
+      if (bucket.length === 0) {
+        bucket = [a];
+        continue;
+      }
+      const last = bucket[bucket.length - 1];
+      const gap = new Date(a.arrivalTime!).getTime() - new Date(last.arrivalTime!).getTime();
+      if (gap <= RIDE_WINDOW_MS) {
+        bucket.push(a);
+      } else {
+        flush();
+        bucket = [a];
+      }
+    }
+    flush();
+  }
+  return clusters;
+}
+
+function CarpoolSection({ attendees }: { attendees: TripAttendee[] }) {
+  const colors = Colors[resolveThemeMode(useColorScheme())];
+  const clusters = useMemo(() => buildCarpoolClusters(attendees), [attendees]);
+
+  if (clusters.length === 0) return null;
+
+  return (
+    <Card style={[styles.rideshareCard, { borderColor: colors.accent }]}>
+      <Text style={[styles.cardHeading, { color: colors.text }]}>Carpool Opportunities</Text>
+      <Text style={[styles.travelText, { color: colors.textMuted }]}>
+        Same airport, within 90 minutes
+      </Text>
+      {clusters.map((c) => (
+        <View key={c.key} style={styles.rideshareItem}>
+          <Ionicons name="car-outline" size={15} color={colors.accent} />
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.travelText, { color: colors.text, fontFamily: Fonts.rounded }]}>
+              {c.airport} · {fmtDayShort(c.people[0].arrivalTime!)} · {c.windowLabel}
+            </Text>
+            {c.people.map((p) => (
+              <Text key={p.id} style={[styles.travelText, { color: colors.textSecondary }]}>
+                · {attendeeName(p)} ({fmtTimeOnly(p.arrivalTime!)})
+              </Text>
+            ))}
+          </View>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function OverlapSection({
+  trip,
+  attendees,
+}: {
+  trip: { startDate: string; endDate: string };
+  attendees: TripAttendee[];
+}) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
 
-  const rideshareGroups = useMemo(() => {
-    const map = new Map<string, TripAttendee[]>();
-    for (const a of attendees) {
-      if (!a.arrivalAirport || a.status === 'DECLINED' || a.status === 'FORFEITED') continue;
-      const key = a.arrivalAirport.toUpperCase();
-      const group = map.get(key) ?? [];
-      group.push(a);
-      map.set(key, group);
+  const data = useMemo(() => {
+    const tripStart = parseDay(trip.startDate).getTime();
+    const tripEnd = parseDay(trip.endDate).getTime() + 86400000;
+    const duration = Math.max(1, tripEnd - tripStart);
+
+    const rows = attendees
+      .filter((a) => (a.arrivalTime || a.departureTime) && a.status !== 'DECLINED')
+      .map((a) => {
+        const arrive = a.arrivalTime ? new Date(a.arrivalTime).getTime() : tripStart;
+        const depart = a.departureTime ? new Date(a.departureTime).getTime() : tripEnd;
+        const startPct = Math.max(0, Math.min(100, ((arrive - tripStart) / duration) * 100));
+        const endPct = Math.max(0, Math.min(100, ((depart - tripStart) / duration) * 100));
+        return {
+          id: a.id,
+          name: attendeeName(a),
+          arrival: a.arrivalTime,
+          departure: a.departureTime,
+          startPct,
+          endPct,
+        };
+      })
+      .sort((a, b) => a.startPct - b.startPct);
+
+    const days: { ms: number; pct: number; label: string }[] = [];
+    for (let ms = tripStart; ms <= tripEnd; ms += 86400000) {
+      const pct = ((ms - tripStart) / duration) * 100;
+      days.push({
+        ms,
+        pct,
+        label: new Date(ms).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          timeZone: 'UTC',
+        }),
+      });
     }
-    return [...map.entries()].filter(([, group]) => group.length >= 2);
-  }, [attendees]);
+    return { rows, days };
+  }, [trip.startDate, trip.endDate, attendees]);
+
+  if (data.rows.length === 0) return null;
+
+  return (
+    <Card style={styles.overlapCard}>
+      <Text style={[styles.cardHeading, { color: colors.text }]}>Stay Overlap</Text>
+      <Text style={[styles.travelText, { color: colors.textMuted }]}>
+        Who&apos;s on the ground when
+      </Text>
+
+      <View style={styles.overlapAxis}>
+        {data.days.map((d) => (
+          <Text
+            key={d.ms}
+            style={[
+              styles.overlapAxisLabel,
+              { color: colors.textMuted, left: `${Math.min(d.pct, 96)}%` },
+            ]}>
+            {d.label}
+          </Text>
+        ))}
+      </View>
+
+      {data.rows.map((r) => (
+        <View key={r.id} style={styles.overlapRow}>
+          <Text style={[styles.overlapName, { color: colors.text }]} numberOfLines={1}>
+            {r.name}
+          </Text>
+          <View style={[styles.overlapTrack, { backgroundColor: colors.surfaceMuted ?? '#E5E7EB' }]}>
+            {data.days.slice(1, -1).map((d) => (
+              <View
+                key={d.ms}
+                style={[
+                  styles.overlapGridline,
+                  { left: `${d.pct}%`, backgroundColor: colors.border ?? '#D1D5DB' },
+                ]}
+              />
+            ))}
+            <View
+              style={[
+                styles.overlapBar,
+                {
+                  left: `${r.startPct}%`,
+                  width: `${Math.max(2, r.endPct - r.startPct)}%`,
+                  backgroundColor: colors.accent,
+                },
+              ]}
+            />
+          </View>
+          <Text style={[styles.overlapMeta, { color: colors.textSecondary }]} numberOfLines={1}>
+            {r.arrival ? `${fmtDayShort(r.arrival)} ${fmtTimeOnly(r.arrival)}` : '—'}
+            {' → '}
+            {r.departure ? `${fmtDayShort(r.departure)} ${fmtTimeOnly(r.departure)}` : '—'}
+          </Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
+function AttendeesContent({
+  attendees,
+  trip,
+}: {
+  attendees: TripAttendee[];
+  trip: { startDate: string; endDate: string };
+}) {
+  const colors = Colors[resolveThemeMode(useColorScheme())];
 
   return (
     <View style={styles.tabContent}>
+      <CarpoolSection attendees={attendees} />
+      <OverlapSection trip={trip} attendees={attendees} />
       {attendees.map((a) => (
         <AttendeeCard key={a.id} attendee={a} />
       ))}
-      {rideshareGroups.length > 0 ? (
-        <Card style={[styles.rideshareCard, { borderColor: colors.accent }]}>
-          <Text style={[styles.cardHeading, { color: colors.text }]}>Rideshare Opportunities</Text>
-          <Text style={[styles.travelText, { color: colors.textMuted }]}>People arriving at the same airport</Text>
-          {rideshareGroups.map(([airport, group]) => (
-            <View key={airport} style={styles.rideshareItem}>
-              <Ionicons name="car-outline" size={15} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.travelText, { color: colors.text, fontFamily: Fonts.rounded }]}>{airport}</Text>
-                <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-                  {group.map((a) => a.member?.name ?? a.legend?.name ?? a.guestName ?? 'Guest').join(' · ')}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </Card>
-      ) : null}
       {attendees.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textMuted }]}>No attendees yet.</Text>
       ) : null}
@@ -1010,7 +1210,7 @@ export default function TripDetailScreen() {
               tripId={tripId}
             />
           ) : activeTab === 'attendees' ? (
-            <AttendeesContent attendees={attendees.data ?? []} />
+            <AttendeesContent attendees={attendees.data ?? []} trip={trip} />
           ) : activeTab === 'expenses' ? (
             <ExpensesContent expenses={expenses.data ?? []} />
           ) : activeTab === 'balance' ? (
@@ -1376,6 +1576,52 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
+  },
+  // Overlap timeline
+  overlapCard: {
+    gap: Spacing.two,
+  },
+  overlapAxis: {
+    height: 16,
+    position: 'relative',
+    marginTop: 2,
+  },
+  overlapAxisLabel: {
+    position: 'absolute',
+    top: 0,
+    fontFamily: Fonts.sans,
+    fontSize: 10,
+    letterSpacing: 0.3,
+  },
+  overlapRow: {
+    gap: 4,
+  },
+  overlapName: {
+    fontFamily: Fonts.rounded,
+    fontSize: 13,
+  },
+  overlapTrack: {
+    height: 10,
+    borderRadius: 5,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  overlapGridline: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+  },
+  overlapBar: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    borderRadius: 5,
+    minWidth: 4,
+  },
+  overlapMeta: {
+    fontFamily: Fonts.sans,
+    fontSize: 11,
   },
   // Expenses
   filterRow: {
