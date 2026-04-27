@@ -22,7 +22,7 @@ import { Card, GhostButton, PrimaryButton } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
-import { getMyTravel, scanTravelImage, updateMyTravel } from '@/features/trips/api';
+import { getMyTravel, getTripDetail, scanTravelImage, updateMyTravel } from '@/features/trips/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { requestContentJson } from '@/lib/api/client';
 
@@ -161,8 +161,10 @@ export default function EditTravelScreen() {
   const [travelMode, setTravelMode] = useState('');
   const [arrivalTime, setArrivalTime] = useState<Date | null>(null);
   const [arrivalAirport, setArrivalAirport] = useState('');
+  const [arrivalFlight, setArrivalFlight] = useState('');
   const [departureTime, setDepartureTime] = useState<Date | null>(null);
   const [departureAirport, setDepartureAirport] = useState('');
+  const [departureFlight, setDepartureFlight] = useState('');
   const [scanning, setScanning] = useState(false);
 
   const travelQuery = useQuery({
@@ -174,14 +176,26 @@ export default function EditTravelScreen() {
     },
   });
 
+  const tripQuery = useQuery({
+    queryKey: ['trip', tripId],
+    queryFn: async () => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Not authenticated');
+      return getTripDetail(token, tripId);
+    },
+  });
+  const tz = tripQuery.data?.timezone ?? 'UTC';
+
   useEffect(() => {
     const t = travelQuery.data;
     if (!t) return;
     setTravelMode(t.travelMode ?? '');
     setArrivalTime(parseToDate(t.arrivalTime));
     setArrivalAirport(t.arrivalAirport ?? '');
+    setArrivalFlight(t.arrivalFlight ?? '');
     setDepartureTime(parseToDate(t.departureTime));
     setDepartureAirport(t.departureAirport ?? '');
+    setDepartureFlight(t.departureFlight ?? '');
   }, [travelQuery.data]);
 
   const saveMutation = useMutation({
@@ -192,8 +206,10 @@ export default function EditTravelScreen() {
         travelMode: travelMode.trim() || null,
         arrivalTime: arrivalTime ? toLocalISO(arrivalTime) : null,
         arrivalAirport: arrivalAirport.trim().toUpperCase() || null,
+        arrivalFlight: arrivalFlight.trim().toUpperCase() || null,
         departureTime: departureTime ? toLocalISO(departureTime) : null,
         departureAirport: departureAirport.trim().toUpperCase() || null,
+        departureFlight: departureFlight.trim().toUpperCase() || null,
       });
     },
     onSuccess: () => {
@@ -237,8 +253,10 @@ export default function EditTravelScreen() {
       if (scanned.travelMode) setTravelMode(scanned.travelMode);
       if (scanned.arrivalTime) setArrivalTime(parseToDate(scanned.arrivalTime));
       if (scanned.arrivalAirport) setArrivalAirport(scanned.arrivalAirport.toUpperCase());
+      if (scanned.arrivalFlight) setArrivalFlight(scanned.arrivalFlight.toUpperCase());
       if (scanned.departureTime) setDepartureTime(parseToDate(scanned.departureTime));
       if (scanned.departureAirport) setDepartureAirport(scanned.departureAirport.toUpperCase());
+      if (scanned.departureFlight) setDepartureFlight(scanned.departureFlight.toUpperCase());
 
       Alert.alert('Scanned', 'Fields pre-filled — review before saving.');
     } catch (err) {
@@ -279,7 +297,7 @@ export default function EditTravelScreen() {
           </GhostButton>
         </View>
         <Text style={[styles.screenSub, { color: colors.textSecondary }]}>
-          Tap Scan to auto-fill from a boarding pass photo. Times are in your local timezone.
+          Tap Scan to auto-fill from a boarding pass photo. Enter times exactly as printed on the pass — they&apos;ll be saved as <Text style={{ fontFamily: Fonts.rounded }}>{tz}</Text> wall-clock.
         </Text>
 
         <Card style={styles.card}>
@@ -296,7 +314,7 @@ export default function EditTravelScreen() {
 
         <Card style={styles.card}>
           <Text style={[styles.sectionHead, { color: colors.text }]}>Arrival</Text>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Date & Time (your timezone)</Text>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Date & Time ({tz})</Text>
           <DateTimeField label="Arrival Date & Time" value={arrivalTime} onChange={setArrivalTime} />
           <Text style={[styles.label, { color: colors.textSecondary }]}>Airport Code</Text>
           <TextInput
@@ -308,11 +326,20 @@ export default function EditTravelScreen() {
             autoCapitalize="characters"
             maxLength={5}
           />
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Flight #</Text>
+          <TextInput
+            style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+            value={arrivalFlight}
+            onChangeText={(v) => setArrivalFlight(v.toUpperCase())}
+            placeholder="e.g. UA 873"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
+          />
         </Card>
 
         <Card style={styles.card}>
           <Text style={[styles.sectionHead, { color: colors.text }]}>Departure</Text>
-          <Text style={[styles.label, { color: colors.textSecondary }]}>Date & Time (your timezone)</Text>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Date & Time ({tz})</Text>
           <DateTimeField label="Departure Date & Time" value={departureTime} onChange={setDepartureTime} />
           <Text style={[styles.label, { color: colors.textSecondary }]}>Airport Code</Text>
           <TextInput
@@ -323,6 +350,15 @@ export default function EditTravelScreen() {
             placeholderTextColor={colors.textMuted}
             autoCapitalize="characters"
             maxLength={5}
+          />
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Flight #</Text>
+          <TextInput
+            style={[styles.input, { color: colors.text, borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}
+            value={departureFlight}
+            onChangeText={(v) => setDepartureFlight(v.toUpperCase())}
+            placeholder="e.g. UA 874"
+            placeholderTextColor={colors.textMuted}
+            autoCapitalize="characters"
           />
         </Card>
 

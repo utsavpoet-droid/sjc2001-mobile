@@ -27,6 +27,7 @@ import {
   getTripBalances,
   getTripDetail,
   getTripExpenses,
+  updateMyTravel,
 } from '@/features/trips/api';
 import { computeSettlement } from '@/features/trips/settle-balances';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -51,6 +52,7 @@ function parseDay(d: string): Date {
 }
 
 function fmtDate(d: string): string {
+  // Date-only strings (no T): always render as UTC to avoid local-day shift.
   return parseDay(d).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -67,33 +69,42 @@ function fmtDateShort(d: string): string {
   });
 }
 
-function fmtDateTime(d: string): string {
+function fmtDateTimeInZone(d: string, tz: string): string {
   if (d.includes('T')) {
     return new Date(d).toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
-      timeZone: 'UTC',
+      timeZone: tz,
     });
   }
   return fmtDate(d);
 }
 
-function fmtTimeOnly(d: string): string {
+function fmtTimeInZone(d: string, tz: string): string {
   return new Date(d).toLocaleTimeString('en-US', {
     hour: 'numeric',
     minute: '2-digit',
-    timeZone: 'UTC',
+    timeZone: tz,
   });
 }
 
-function fmtDayShort(d: string): string {
+function fmtDayInZone(d: string, tz: string): string {
   return new Date(d).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
-    timeZone: 'UTC',
+    timeZone: tz,
   });
+}
+
+function dayKeyInZone(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(iso));
 }
 
 function daysUntil(d: string): number {
@@ -419,13 +430,14 @@ function OverviewContent({
   attendees,
   tripId,
 }: {
-  trip: { startDate: string; endDate: string; status: TripStatus };
+  trip: { startDate: string; endDate: string; status: TripStatus; address: string | null; timezone: string };
   myBalance: TripBalance | null | undefined;
-  myTravel: { travelMode?: string | null; arrivalTime?: string | null; arrivalAirport?: string | null; departureTime?: string | null; departureAirport?: string | null } | null | undefined;
+  myTravel: { travelMode?: string | null; arrivalTime?: string | null; arrivalAirport?: string | null; arrivalFlight?: string | null; departureTime?: string | null; departureAirport?: string | null; departureFlight?: string | null } | null | undefined;
   expenses: TripExpense[];
   attendees: TripAttendee[];
   tripId: number;
 }) {
+  const tz = trip.timezone || 'UTC';
   const colors = Colors[resolveThemeMode(useColorScheme())];
 
   const recentExpenses = useMemo(
@@ -454,6 +466,10 @@ function OverviewContent({
             <Ionicons name="chevron-forward" size={14} color={colors.accent} />
           </Pressable>
         </View>
+        <Text style={[styles.travelText, { color: colors.textMuted, fontSize: 11 }]}>
+          🕒 Times in {tz}
+          {trip.address ? ` · 📍 ${trip.address}` : ''}
+        </Text>
         {myTravel?.travelMode || myTravel?.arrivalTime || myTravel?.departureTime ? (
           <View style={styles.travelDetails}>
             {myTravel?.travelMode ? (
@@ -466,8 +482,9 @@ function OverviewContent({
               <View style={styles.travelDetailRow}>
                 <Text style={[styles.travelKey, { color: colors.textMuted }]}>Arrive</Text>
                 <Text style={[styles.travelVal, { color: colors.text }]}>
-                  {fmtDateTime(myTravel.arrivalTime)}
+                  {fmtDateTimeInZone(myTravel.arrivalTime, tz)}
                   {myTravel.arrivalAirport ? ` · ${myTravel.arrivalAirport}` : ''}
+                  {myTravel.arrivalFlight ? ` · ${myTravel.arrivalFlight}` : ''}
                 </Text>
               </View>
             ) : null}
@@ -475,8 +492,9 @@ function OverviewContent({
               <View style={styles.travelDetailRow}>
                 <Text style={[styles.travelKey, { color: colors.textMuted }]}>Depart</Text>
                 <Text style={[styles.travelVal, { color: colors.text }]}>
-                  {fmtDateTime(myTravel.departureTime)}
+                  {fmtDateTimeInZone(myTravel.departureTime, tz)}
                   {myTravel.departureAirport ? ` · ${myTravel.departureAirport}` : ''}
+                  {myTravel.departureFlight ? ` · ${myTravel.departureFlight}` : ''}
                 </Text>
               </View>
             ) : null}
@@ -551,7 +569,7 @@ function OverviewContent({
 
 // ─── Attendees content ───────────────────────────────────────────────────────
 
-function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
+function AttendeeCard({ attendee, tz }: { attendee: TripAttendee; tz: string }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const name = attendee.member?.name ?? attendee.legend?.name ?? attendee.guestName ?? 'Guest';
   const bg = ATTENDEE_STATUS_COLORS[attendee.status];
@@ -572,8 +590,9 @@ function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
         <View style={styles.travelRow}>
           <Ionicons name="arrow-down-circle-outline" size={13} color={colors.accent} />
           <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-            {fmtDateTime(attendee.arrivalTime)}
+            {fmtDateTimeInZone(attendee.arrivalTime, tz)}
             {attendee.arrivalAirport ? ` · ${attendee.arrivalAirport}` : ''}
+            {attendee.arrivalFlight ? ` · ${attendee.arrivalFlight}` : ''}
           </Text>
         </View>
       ) : null}
@@ -581,8 +600,9 @@ function AttendeeCard({ attendee }: { attendee: TripAttendee }) {
         <View style={styles.travelRow}>
           <Ionicons name="arrow-up-circle-outline" size={13} color={colors.accent} />
           <Text style={[styles.travelText, { color: colors.textSecondary }]}>
-            {fmtDateTime(attendee.departureTime)}
+            {fmtDateTimeInZone(attendee.departureTime, tz)}
             {attendee.departureAirport ? ` · ${attendee.departureAirport}` : ''}
+            {attendee.departureFlight ? ` · ${attendee.departureFlight}` : ''}
           </Text>
         </View>
       ) : null}
@@ -606,12 +626,12 @@ type CarpoolCluster = {
   people: TripAttendee[];
 };
 
-function buildCarpoolClusters(attendees: TripAttendee[]): CarpoolCluster[] {
+function buildCarpoolClusters(attendees: TripAttendee[], tz: string): CarpoolCluster[] {
   const byKey = new Map<string, TripAttendee[]>();
   for (const a of attendees) {
     if (!a.arrivalAirport || !a.arrivalTime) continue;
     if (a.status === 'DECLINED' || a.status === 'FORFEITED') continue;
-    const dayKey = a.arrivalTime.slice(0, 10);
+    const dayKey = dayKeyInZone(a.arrivalTime, tz);
     const key = `${a.arrivalAirport.toUpperCase()}|${dayKey}`;
     const list = byKey.get(key) ?? [];
     list.push(a);
@@ -631,7 +651,7 @@ function buildCarpoolClusters(attendees: TripAttendee[]): CarpoolCluster[] {
         const first = bucket[0].arrivalTime!;
         const last = bucket[bucket.length - 1].arrivalTime!;
         const windowLabel =
-          first === last ? fmtTimeOnly(first) : `${fmtTimeOnly(first)} – ${fmtTimeOnly(last)}`;
+          first === last ? fmtTimeInZone(first, tz) : `${fmtTimeInZone(first, tz)} – ${fmtTimeInZone(last, tz)}`;
         clusters.push({
           key: `${airport}-${date}-${first}`,
           airport,
@@ -662,9 +682,19 @@ function buildCarpoolClusters(attendees: TripAttendee[]): CarpoolCluster[] {
   return clusters;
 }
 
-function CarpoolSection({ attendees }: { attendees: TripAttendee[] }) {
+function CarpoolSection({
+  attendees,
+  tz,
+  myMemberId,
+  onClaimLeader,
+}: {
+  attendees: TripAttendee[];
+  tz: string;
+  myMemberId: number | null;
+  onClaimLeader: (next: boolean) => void;
+}) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
-  const clusters = useMemo(() => buildCarpoolClusters(attendees), [attendees]);
+  const clusters = useMemo(() => buildCarpoolClusters(attendees, tz), [attendees, tz]);
 
   if (clusters.length === 0) return null;
 
@@ -672,23 +702,97 @@ function CarpoolSection({ attendees }: { attendees: TripAttendee[] }) {
     <Card style={[styles.rideshareCard, { borderColor: colors.accent }]}>
       <Text style={[styles.cardHeading, { color: colors.text }]}>Carpool Opportunities</Text>
       <Text style={[styles.travelText, { color: colors.textMuted }]}>
-        Same airport, within 90 minutes
+        Same airport, within 90 minutes — lead a ride or hop in.
       </Text>
-      {clusters.map((c) => (
-        <View key={c.key} style={styles.rideshareItem}>
-          <Ionicons name="car-outline" size={15} color={colors.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.travelText, { color: colors.text, fontFamily: Fonts.rounded }]}>
-              {c.airport} · {fmtDayShort(c.people[0].arrivalTime!)} · {c.windowLabel}
-            </Text>
-            {c.people.map((p) => (
-              <Text key={p.id} style={[styles.travelText, { color: colors.textSecondary }]}>
-                · {attendeeName(p)} ({fmtTimeOnly(p.arrivalTime!)})
-              </Text>
-            ))}
+      {clusters.map((c) => {
+        const flightGroups: Record<string, TripAttendee[]> = {};
+        for (const p of c.people) {
+          const key = (p.arrivalFlight || '__none').toUpperCase().replace(/\s+/g, '');
+          (flightGroups[key] = flightGroups[key] ?? []).push(p);
+        }
+        const leader = c.people.find((p) => p.carpoolLeader) ?? null;
+        const meInCluster = c.people.find((p) => p.memberId === myMemberId) ?? null;
+        const iAmLeader = !!leader && leader.memberId === myMemberId;
+        const estPerPerson = Math.round(60 / Math.min(c.people.length, 4));
+
+        return (
+          <View key={c.key} style={styles.carpoolBlock}>
+            <View style={styles.carpoolHeaderRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.travelText, { color: colors.text, fontFamily: Fonts.rounded }]}>
+                  {c.people.length} arriving at {c.airport}
+                </Text>
+                <Text style={[styles.travelText, { color: colors.textMuted, fontSize: 12 }]}>
+                  {fmtDayInZone(c.people[0].arrivalTime!, tz)} · {c.windowLabel} ({tz})
+                </Text>
+              </View>
+              <View style={[styles.carpoolEstChip, { backgroundColor: '#15803D20', borderColor: '#15803D' }]}>
+                <Text style={[styles.carpoolEstText, { color: '#15803D' }]}>~${estPerPerson}/pp</Text>
+              </View>
+            </View>
+
+            <View style={styles.carpoolLeaderRow}>
+              {leader ? (
+                <View style={[styles.leaderPill, { backgroundColor: '#F59E0B20', borderColor: '#B45309' }]}>
+                  <Text style={[styles.leaderPillText, { color: '#B45309' }]}>
+                    👑 {attendeeName(leader)}{iAmLeader ? ' (you)' : ''}
+                  </Text>
+                </View>
+              ) : (
+                <View style={[styles.leaderPill, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
+                  <Text style={[styles.leaderPillText, { color: colors.textSecondary }]}>No leader yet</Text>
+                </View>
+              )}
+              {meInCluster && !leader ? (
+                <Pressable
+                  onPress={() => onClaimLeader(true)}
+                  style={({ pressed }) => [
+                    styles.leaderBtn,
+                    { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 },
+                  ]}>
+                  <Text style={styles.leaderBtnText}>I&apos;ll lead</Text>
+                </Pressable>
+              ) : null}
+              {iAmLeader ? (
+                <Pressable
+                  onPress={() => onClaimLeader(false)}
+                  style={({ pressed }) => [
+                    styles.leaderBtn,
+                    { backgroundColor: 'transparent', borderWidth: 1, borderColor: '#B45309', opacity: pressed ? 0.7 : 1 },
+                  ]}>
+                  <Text style={[styles.leaderBtnText, { color: '#B45309' }]}>Step down</Text>
+                </Pressable>
+              ) : null}
+            </View>
+
+            {c.people.map((p) => {
+              const flightKey = (p.arrivalFlight || '__none').toUpperCase().replace(/\s+/g, '');
+              const sameFlight = flightKey !== '__none' && flightGroups[flightKey].length >= 2;
+              const isMe = p.memberId === myMemberId;
+              return (
+                <View key={p.id} style={styles.carpoolPersonRow}>
+                  <Text style={[styles.travelText, { color: isMe ? colors.accent : colors.textSecondary, flex: 1 }]}>
+                    {attendeeName(p)}{isMe ? ' (you)' : ''} {p.carpoolLeader ? '👑' : ''}
+                  </Text>
+                  <Text style={[styles.travelText, { color: colors.textMuted, fontSize: 12, marginRight: 6 }]}>
+                    {fmtTimeInZone(p.arrivalTime!, tz)}
+                  </Text>
+                  {p.arrivalFlight ? (
+                    <View style={[styles.flightChip, { backgroundColor: colors.surfaceMuted, borderColor: colors.border }]}>
+                      <Text style={[styles.flightChipText, { color: colors.textSecondary }]}>{p.arrivalFlight}</Text>
+                    </View>
+                  ) : null}
+                  {sameFlight ? (
+                    <View style={[styles.sameFlightChip, { backgroundColor: '#A855F720' }]}>
+                      <Text style={[styles.sameFlightChipText, { color: '#7C3AED' }]}>same flight</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
-        </View>
-      ))}
+        );
+      })}
     </Card>
   );
 }
@@ -696,11 +800,16 @@ function CarpoolSection({ attendees }: { attendees: TripAttendee[] }) {
 function OverlapSection({
   trip,
   attendees,
+  tz,
+  myMemberId,
 }: {
   trip: { startDate: string; endDate: string };
   attendees: TripAttendee[];
+  tz: string;
+  myMemberId: number | null;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
+  const [selectedId, setSelectedId] = useState<number | null>(null);
 
   const data = useMemo(() => {
     const tripStart = parseDay(trip.startDate).getTime();
@@ -716,6 +825,7 @@ function OverlapSection({
         const endPct = Math.max(0, Math.min(100, ((depart - tripStart) / duration) * 100));
         return {
           id: a.id,
+          memberId: a.memberId,
           name: attendeeName(a),
           arrival: a.arrivalTime,
           departure: a.departureTime,
@@ -747,7 +857,7 @@ function OverlapSection({
     <Card style={styles.overlapCard}>
       <Text style={[styles.cardHeading, { color: colors.text }]}>Stay Overlap</Text>
       <Text style={[styles.travelText, { color: colors.textMuted }]}>
-        Who&apos;s on the ground when
+        Tap a bar to see exact arrival → departure ({tz})
       </Text>
 
       <View style={styles.overlapAxis}>
@@ -763,39 +873,52 @@ function OverlapSection({
         ))}
       </View>
 
-      {data.rows.map((r) => (
-        <View key={r.id} style={styles.overlapRow}>
-          <Text style={[styles.overlapName, { color: colors.text }]} numberOfLines={1}>
-            {r.name}
-          </Text>
-          <View style={[styles.overlapTrack, { backgroundColor: colors.surfaceMuted ?? '#E5E7EB' }]}>
-            {data.days.slice(1, -1).map((d) => (
+      {data.rows.map((r) => {
+        const isMe = r.memberId === myMemberId;
+        const isSelected = selectedId === r.id;
+        const arriveLabel = r.arrival ? `${fmtDayInZone(r.arrival, tz)} ${fmtTimeInZone(r.arrival, tz)}` : 'Already here';
+        const departLabel = r.departure ? `${fmtDayInZone(r.departure, tz)} ${fmtTimeInZone(r.departure, tz)}` : 'Stays through';
+        return (
+          <View key={r.id} style={styles.overlapRow}>
+            <Text
+              style={[styles.overlapName, { color: isMe ? colors.accent : colors.text }]}
+              numberOfLines={1}>
+              {r.name}{isMe ? ' (you)' : ''}
+            </Text>
+            <Pressable
+              onPress={() => {
+                void Haptics.selectionAsync();
+                setSelectedId((prev) => (prev === r.id ? null : r.id));
+              }}
+              style={[styles.overlapTrack, { backgroundColor: colors.surfaceMuted ?? '#E5E7EB' }]}>
+              {data.days.slice(1, -1).map((d) => (
+                <View
+                  key={d.ms}
+                  style={[
+                    styles.overlapGridline,
+                    { left: `${d.pct}%`, backgroundColor: colors.border ?? '#D1D5DB' },
+                  ]}
+                />
+              ))}
               <View
-                key={d.ms}
                 style={[
-                  styles.overlapGridline,
-                  { left: `${d.pct}%`, backgroundColor: colors.border ?? '#D1D5DB' },
+                  styles.overlapBar,
+                  {
+                    left: `${r.startPct}%`,
+                    width: `${Math.max(2, r.endPct - r.startPct)}%`,
+                    backgroundColor: isSelected || isMe ? colors.accent : `${colors.accent}AA`,
+                  },
                 ]}
               />
-            ))}
-            <View
-              style={[
-                styles.overlapBar,
-                {
-                  left: `${r.startPct}%`,
-                  width: `${Math.max(2, r.endPct - r.startPct)}%`,
-                  backgroundColor: colors.accent,
-                },
-              ]}
-            />
+            </Pressable>
+            {isSelected ? (
+              <Text style={[styles.overlapMeta, { color: colors.text }]} numberOfLines={1}>
+                {arriveLabel} → {departLabel}
+              </Text>
+            ) : null}
           </View>
-          <Text style={[styles.overlapMeta, { color: colors.textSecondary }]} numberOfLines={1}>
-            {r.arrival ? `${fmtDayShort(r.arrival)} ${fmtTimeOnly(r.arrival)}` : '—'}
-            {' → '}
-            {r.departure ? `${fmtDayShort(r.departure)} ${fmtTimeOnly(r.departure)}` : '—'}
-          </Text>
-        </View>
-      ))}
+        );
+      })}
     </Card>
   );
 }
@@ -803,18 +926,23 @@ function OverlapSection({
 function AttendeesContent({
   attendees,
   trip,
+  myMemberId,
+  onClaimLeader,
 }: {
   attendees: TripAttendee[];
-  trip: { startDate: string; endDate: string };
+  trip: { startDate: string; endDate: string; timezone: string };
+  myMemberId: number | null;
+  onClaimLeader: (next: boolean) => void;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
+  const tz = trip.timezone || 'UTC';
 
   return (
     <View style={styles.tabContent}>
-      <CarpoolSection attendees={attendees} />
-      <OverlapSection trip={trip} attendees={attendees} />
+      <CarpoolSection attendees={attendees} tz={tz} myMemberId={myMemberId} onClaimLeader={onClaimLeader} />
+      <OverlapSection trip={trip} attendees={attendees} tz={tz} myMemberId={myMemberId} />
       {attendees.map((a) => (
-        <AttendeeCard key={a.id} attendee={a} />
+        <AttendeeCard key={a.id} attendee={a} tz={tz} />
       ))}
       {attendees.length === 0 ? (
         <Text style={[styles.emptyText, { color: colors.textMuted }]}>No attendees yet.</Text>
@@ -1149,6 +1277,15 @@ export default function TripDetailScreen() {
     void myTravel.refetch();
   }
 
+  const getValidAccessToken = useAuthStore((s) => s.getValidAccessToken);
+  async function handleClaimLeader(next: boolean) {
+    const token = await getValidAccessToken();
+    if (!token) return;
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await updateMyTravel(token, tripId, { carpoolLeader: next });
+    refetchAll();
+  }
+
   function handleSelectTab(t: Tab) {
     setActiveTab(t);
     requestAnimationFrame(() => {
@@ -1210,7 +1347,12 @@ export default function TripDetailScreen() {
               tripId={tripId}
             />
           ) : activeTab === 'attendees' ? (
-            <AttendeesContent attendees={attendees.data ?? []} trip={trip} />
+            <AttendeesContent
+              attendees={attendees.data ?? []}
+              trip={trip}
+              myMemberId={myMemberId}
+              onClaimLeader={handleClaimLeader}
+            />
           ) : activeTab === 'expenses' ? (
             <ExpensesContent expenses={expenses.data ?? []} />
           ) : activeTab === 'balance' ? (
@@ -1576,6 +1718,80 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 6,
+  },
+  carpoolBlock: {
+    gap: 6,
+    paddingTop: Spacing.two,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: 'rgba(0,0,0,0.08)',
+  },
+  carpoolHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  carpoolEstChip: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  carpoolEstText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+  },
+  carpoolLeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  leaderPill: {
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  leaderPillText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+  },
+  leaderBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  leaderBtnText: {
+    color: '#fff',
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+  },
+  carpoolPersonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  flightChip: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  flightChipText: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+  },
+  sameFlightChip: {
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  sameFlightChipText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   // Overlap timeline
   overlapCard: {

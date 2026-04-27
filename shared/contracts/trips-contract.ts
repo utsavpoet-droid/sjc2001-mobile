@@ -18,6 +18,8 @@ export interface TripSummary {
   startDate: string;
   endDate: string;
   location: string | null;
+  address: string | null;
+  timezone: string;
   coverPhotoUrl: string | null;
   status: TripStatus;
   isPublic: boolean;
@@ -34,8 +36,11 @@ export interface TripAttendee {
   travelMode: string | null;
   arrivalTime: string | null;
   arrivalAirport: string | null;
+  arrivalFlight: string | null;
   departureTime: string | null;
   departureAirport: string | null;
+  departureFlight: string | null;
+  carpoolLeader: boolean;
   notes: string | null;
   member: { id: number; name: string } | null;
   legend: { id: number; name: string } | null;
@@ -103,8 +108,11 @@ export interface MyTravelRecord {
   travelMode: string | null;
   arrivalTime: string | null;
   arrivalAirport: string | null;
+  arrivalFlight: string | null;
   departureTime: string | null;
   departureAirport: string | null;
+  departureFlight: string | null;
+  carpoolLeader?: boolean;
 }
 
 export interface TravelScanResult {
@@ -112,6 +120,8 @@ export interface TravelScanResult {
   arrivalAirport: string | null;
   departureTime: string | null;
   arrivalTime: string | null;
+  arrivalFlight?: string | null;
+  departureFlight?: string | null;
   travelMode: string | null;
 }
 
@@ -135,6 +145,9 @@ export interface UpdateTravelBody {
   travelMode?: string | null;
   arrivalTime?: string | null;
   arrivalAirport?: string | null;
+  arrivalFlight?: string | null;
   departureTime?: string | null;
   departureAirport?: string | null;
+  departureFlight?: string | null;
+  carpoolLeader?: boolean;
 }
