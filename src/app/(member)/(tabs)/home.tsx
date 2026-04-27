@@ -350,6 +350,7 @@ const shortcuts: {
   { href: '/(member)/(tabs)/stories' as Href, icon: 'chatbubbles', title: 'Stories', tone: 'cool' },
   { href: '/(member)/(tabs)/gallery' as Href, icon: 'images', title: 'Gallery', tone: 'muted' },
   { href: '/(member)/polls' as Href, icon: 'checkbox', title: 'Polls', tone: 'warm' },
+  { href: '/(member)/committees' as Href, icon: 'people-circle', title: 'Committees', tone: 'cool' },
   { href: '/(member)/silver-jubilee' as Href, icon: 'sparkles', title: 'Jubilee', tone: 'cool' },
   { href: '/(member)/(tabs)/account' as Href, icon: 'person-circle', title: 'Profile', tone: 'muted' },
 ];

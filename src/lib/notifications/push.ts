@@ -55,6 +55,21 @@ function routeForNotificationData(data: PushPayload): Href | null {
       if (entity === 'gallery' && id) return `/(member)/gallery/${id}` as Href;
       if (entity === 'polls') return '/(member)/polls/index' as Href;
       if ((entity === 'directory' || entity === 'members') && id) return `/(member)/members/${id}` as Href;
+      if (entity === 'committees' && id) {
+        if (segments[2] === 'posts' && segments[3]) {
+          return `/(member)/committees/${id}/posts/${segments[3]}` as Href;
+        }
+        if (segments[2] === 'tasks' && segments[3]) {
+          return `/(member)/committees/${id}/tasks/${segments[3]}` as Href;
+        }
+        if (segments[2] === 'decisions' && segments[3]) {
+          return `/(member)/committees/${id}/decisions/${segments[3]}` as Href;
+        }
+        if (segments[2] === 'documents') {
+          return `/(member)/committees/${id}/documents` as Href;
+        }
+        return `/(member)/committees/${id}` as Href;
+      }
     } catch {
       // Fall through to entityType/entityId mapping.
     }
