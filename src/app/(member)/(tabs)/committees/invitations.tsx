@@ -113,6 +113,69 @@ function InvitationRow({
   );
 }
 
+function PendingApprovalRow({
+  inv,
+  onRespond,
+  busy,
+}: {
+  inv: CommitteeInvitationDto;
+  onRespond: ActionPress;
+  busy: boolean;
+}) {
+  const colors = Colors[resolveThemeMode(useColorScheme())];
+  const requester = inv.invitedByUser?.name ?? `Member ${inv.invitedMemberUserId}`;
+  const isPending = inv.status === 'PENDING';
+
+  return (
+    <Card style={styles.row}>
+      <View style={{ flex: 1, gap: 4 }}>
+        <Text style={[styles.title, { color: colors.text }]}>
+          {inv.committee?.name ?? 'Committee'}
+        </Text>
+        <Text style={[styles.meta, { color: colors.textSecondary }]}>
+          {requester} requested to join
+        </Text>
+        {inv.message ? (
+          <Text style={[styles.message, { color: colors.textSecondary }]}>
+            “{inv.message}”
+          </Text>
+        ) : null}
+        <Text style={[styles.status, { color: statusColor(inv.status, colors) }]}>
+          {statusLabel(inv.status)}
+        </Text>
+      </View>
+      {isPending ? (
+        <View style={styles.actions}>
+          <Pressable
+            disabled={busy}
+            onPress={() => onRespond(inv.id, 'ACCEPTED')}
+            style={({ pressed }) => [
+              styles.actionBtn,
+              {
+                backgroundColor: colors.accent,
+                opacity: busy ? 0.5 : pressed ? 0.85 : 1,
+              },
+            ]}>
+            <Text style={[styles.actionText, { color: colors.background }]}>Approve</Text>
+          </Pressable>
+          <Pressable
+            disabled={busy}
+            onPress={() => onRespond(inv.id, 'DECLINED')}
+            style={({ pressed }) => [
+              styles.actionBtnGhost,
+              {
+                borderColor: colors.border,
+                opacity: busy ? 0.5 : pressed ? 0.7 : 1,
+              },
+            ]}>
+            <Text style={[styles.actionText, { color: colors.text }]}>Decline</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </Card>
+  );
+}
+
 function JoinRequestRow({
   inv,
   onCancel,
@@ -247,7 +310,28 @@ export default function InvitationsScreen() {
 
         {data ? (
           <>
-            <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+            {(data.pendingApprovals?.length ?? 0) > 0 ? (
+              <>
+                <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>
+                  Requests to approve
+                </Text>
+                {data.pendingApprovals!.map((inv) => (
+                  <PendingApprovalRow
+                    key={inv.id}
+                    inv={inv}
+                    onRespond={onRespond}
+                    busy={respondingId === inv.id}
+                  />
+                ))}
+              </>
+            ) : null}
+
+            <Text
+              style={[
+                styles.sectionLabel,
+                { color: colors.textSecondary },
+                (data.pendingApprovals?.length ?? 0) > 0 ? { marginTop: Spacing.three } : null,
+              ]}>
               Invitations to you
             </Text>
             {data.invitations.length === 0 ? (

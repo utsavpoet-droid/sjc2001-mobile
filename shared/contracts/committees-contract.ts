@@ -156,6 +156,7 @@ export interface CommitteeInvitationDto {
 export interface CommitteeInvitationInbox {
   invitations: CommitteeInvitationDto[];      // chair-issued, addressed to the caller
   myJoinRequests: CommitteeInvitationDto[];   // self-authored, awaiting chair approval
+  pendingApprovals: CommitteeInvitationDto[]; // join requests on committees the caller can approve
 }
 
 export interface RequestJoinResponse {

@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 
+import { BackLink } from '@/components/ui/back-link';
 import { Card, GhostButton, SectionTitle } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
@@ -173,12 +174,15 @@ export default function CommitteesScreen() {
             tintColor={colors.accent}
           />
         }>
+        <BackLink label="Home" />
         <View style={styles.header}>
-          <SectionTitle
-            eyebrow="Silver Jubilee"
-            title="Committees"
-            subtitle="Coordinate on planning, decisions, and tasks."
-          />
+          <View style={styles.headerTitle}>
+            <SectionTitle
+              eyebrow="Silver Jubilee"
+              title="Committees"
+              subtitle="Coordinate on planning, decisions, and tasks."
+            />
+          </View>
           <GhostButton onPress={() => router.push('/(member)/committees/invitations')}>
             Invitations
           </GhostButton>
@@ -244,10 +248,13 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-end',
-    gap: Spacing.three,
+    gap: Spacing.two,
     marginBottom: Spacing.two,
+  },
+  headerTitle: {
+    flex: 1,
+    minWidth: 0,
   },
   sectionLabel: {
     fontFamily: Fonts.rounded,

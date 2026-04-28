@@ -17,6 +17,7 @@ import {
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getBirthdays, getNews, type BirthdayEntry } from '@/features/content/api';
+import { getMemberActivity } from '@/features/member/api';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
@@ -375,6 +376,17 @@ export default function HomeScreen() {
     },
   });
   const birthdayEntries: BirthdayEntry[] = birthdaysQuery.data?.birthdays ?? [];
+
+  const activityQuery = useQuery({
+    queryKey: ['member-activity-unread'],
+    queryFn: async () => {
+      const token = await useAuthStore.getState().getValidAccessToken();
+      if (!token) return { unseen: 0, items: [] };
+      return getMemberActivity(token);
+    },
+    refetchInterval: 60_000,
+  });
+  const unseenCount = activityQuery.data?.unseen ?? 0;
   type NewsItem = { id?: number; title?: string | null; body?: string | null; publishedAt?: string | null };
   const featuredNews = newsItems[0] as NewsItem | undefined;
   const restNews = (newsItems.slice(1) as NewsItem[]);
@@ -383,14 +395,33 @@ export default function HomeScreen() {
     <Screen scroll>
 
       {/* ── GREETING ──────────────────────────────────────────────── */}
-      <View style={styles.greetingBlock}>
-        <Text style={[styles.greetingEyebrow, { color: colors.accent }]}>SILVER CIRCLE</Text>
-        <Text style={[styles.greetingTitle, { color: colors.text }]}>
-          {timeGreeting()}, {firstName}!
-        </Text>
-        <Text style={[styles.greetingSubtitle, { color: colors.textSecondary }]}>
-          Class of 2001 · Silver Jubilee
-        </Text>
+      <View style={styles.greetingRow}>
+        <View style={styles.greetingBlock}>
+          <Text style={[styles.greetingEyebrow, { color: colors.accent }]}>SILVER CIRCLE</Text>
+          <Text style={[styles.greetingTitle, { color: colors.text }]}>
+            {timeGreeting()}, {firstName}!
+          </Text>
+          <Text style={[styles.greetingSubtitle, { color: colors.textSecondary }]}>
+            Class of 2001 · Silver Jubilee
+          </Text>
+        </View>
+        <Pressable
+          accessibilityLabel="Activity"
+          onPress={() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            router.push('/(member)/activity' as Href);
+          }}
+          style={({ pressed }) => [
+            styles.bellButton,
+            { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? 0.7 : 1 },
+          ]}>
+          <Ionicons name="notifications-outline" size={22} color={colors.text} />
+          {unseenCount > 0 ? (
+            <View style={[styles.bellBadge, { backgroundColor: colors.danger ?? '#dc2626' }]}>
+              <Text style={styles.bellBadgeText}>{unseenCount > 9 ? '9+' : String(unseenCount)}</Text>
+            </View>
+          ) : null}
+        </Pressable>
       </View>
 
       {/* ── HERO BANNER ───────────────────────────────────────────── */}
@@ -513,13 +544,44 @@ export default function HomeScreen() {
   );
 }
 
-const TILE_SIZE = (SW - Spacing.three * 2 - Spacing.two * 2) / 3;
+const TILE_SIZE = (SW - Spacing.four * 2 - Spacing.two * 2) / 3;
 
 const styles = StyleSheet.create({
   // Greeting
-  greetingBlock: {
-    gap: Spacing.one,
+  greetingRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.three,
     paddingTop: Spacing.one,
+  },
+  greetingBlock: {
+    flex: 1,
+    gap: Spacing.one,
+  },
+  bellButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  bellBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bellBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
   },
   greetingEyebrow: {
     fontFamily: Fonts.mono,
@@ -680,7 +742,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: Spacing.two,
-    justifyContent: 'space-between',
   },
   tile: {
     width: TILE_SIZE,

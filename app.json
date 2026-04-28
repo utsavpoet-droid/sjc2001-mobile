@@ -13,6 +13,8 @@
       "bundleIdentifier": "com.utsav.sjc2001",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "SJC 2001 needs access to your photo library so you can choose photos for your member profile (school, current, and family photos), upload trip albums and expense receipts, and attach files to committee documents. Photos you select are uploaded only when you tap Save or Submit.",
+        "NSPhotoLibraryAddUsageDescription": "SJC 2001 may save photos you share back to your library when you use the Share or Save action.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true

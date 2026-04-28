@@ -34,22 +34,6 @@ export default function MemberLayout() {
       <Stack.Screen name="polls/index" />
       <Stack.Screen name="silver-jubilee/index" />
       <Stack.Screen name="news/[id]" />
-      <Stack.Screen name="committees/index" />
-      <Stack.Screen name="committees/[id]/index" />
-      <Stack.Screen name="committees/[id]/compose" />
-      <Stack.Screen name="committees/[id]/posts/[postId]" />
-      <Stack.Screen name="committees/[id]/members" />
-      <Stack.Screen name="committees/[id]/invite" />
-      <Stack.Screen name="committees/[id]/polls/new" />
-      <Stack.Screen name="committees/[id]/tasks/index" />
-      <Stack.Screen name="committees/[id]/tasks/new" />
-      <Stack.Screen name="committees/[id]/tasks/[taskId]" />
-      <Stack.Screen name="committees/[id]/decisions/index" />
-      <Stack.Screen name="committees/[id]/decisions/new" />
-      <Stack.Screen name="committees/[id]/decisions/[decisionId]" />
-      <Stack.Screen name="committees/[id]/documents/index" />
-      <Stack.Screen name="committees/[id]/documents/new" />
-      <Stack.Screen name="committees/invitations" />
     </Stack>
   );
 }
