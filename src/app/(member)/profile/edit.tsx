@@ -8,6 +8,7 @@ import {
   Alert,
   LayoutChangeEvent,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -23,6 +24,29 @@ import { getMemberProfile, putMemberProfile } from '@/features/member/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { resolveBackendUrl } from '@/lib/api/bases';
 import { reportMobileError } from '@/lib/error-logging';
+
+// ─── Timezone options (mobile) ────────────────────────────────────────────────
+const MOBILE_TZ_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'Auto (from country)' },
+  { value: 'Asia/Kolkata', label: 'India (IST)' },
+  { value: 'Asia/Dubai', label: 'Dubai (GST)' },
+  { value: 'Asia/Singapore', label: 'Singapore (SGT)' },
+  { value: 'Asia/Bangkok', label: 'Bangkok (ICT)' },
+  { value: 'Asia/Tokyo', label: 'Tokyo (JST)' },
+  { value: 'Asia/Hong_Kong', label: 'Hong Kong (HKT)' },
+  { value: 'Australia/Sydney', label: 'Sydney (AEDT)' },
+  { value: 'Europe/London', label: 'London (GMT/BST)' },
+  { value: 'Europe/Paris', label: 'Paris (CET)' },
+  { value: 'Europe/Zurich', label: 'Zurich (CET)' },
+  { value: 'America/New_York', label: 'New York (EST/EDT)' },
+  { value: 'America/Chicago', label: 'Chicago (CST/CDT)' },
+  { value: 'America/Denver', label: 'Denver (MST/MDT)' },
+  { value: 'America/Los_Angeles', label: 'Los Angeles (PST/PDT)' },
+  { value: 'America/Toronto', label: 'Toronto (EST/EDT)' },
+  { value: 'America/Vancouver', label: 'Vancouver (PST/PDT)' },
+  { value: 'Pacific/Auckland', label: 'Auckland (NZDT)' },
+  { value: 'UTC', label: 'UTC' },
+];
 
 // ─── Photo picker card ────────────────────────────────────────────────────────
 
@@ -223,6 +247,7 @@ export default function EditProfileScreen() {
 
   const [title, setTitle] = useState('');
   const [comments, setComments] = useState('');
+  const [timezone, setTimezone] = useState('');
   const [schoolPhotoUrl, setSchoolPhotoUrl] = useState('');
   const [schoolPhotoFocalX, setSchoolPhotoFocalX] = useState(50);
   const [schoolPhotoFocalY, setSchoolPhotoFocalY] = useState(50);
@@ -237,6 +262,7 @@ export default function EditProfileScreen() {
     if (!profileQuery.data) return;
     setTitle(profileQuery.data.title ?? '');
     setComments(profileQuery.data.comments ?? '');
+    setTimezone(profileQuery.data.timezone ?? '');
     setSchoolPhotoUrl(profileQuery.data.schoolPhotoUrl ?? '');
     setSchoolPhotoFocalX(profileQuery.data.schoolPhotoFocalX ?? 50);
     setSchoolPhotoFocalY(profileQuery.data.schoolPhotoFocalY ?? 50);
@@ -261,6 +287,7 @@ export default function EditProfileScreen() {
       return putMemberProfile(token, {
         title,
         comments,
+        timezone,
         schoolPhotoUrl,
         schoolPhotoFocalX,
         schoolPhotoFocalY,
@@ -306,6 +333,33 @@ export default function EditProfileScreen() {
         <Text style={[styles.charCount, { color: comments.length > 280 ? colors.danger : colors.textMuted }]}>
           {comments.length} / 300
         </Text>
+      </Card>
+
+      {/* Timezone section */}
+      <Card style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>TIMEZONE</Text>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
+          Used so reminders and timestamps make sense for where you live.
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tzRow}>
+          {MOBILE_TZ_OPTIONS.map((opt) => {
+            const selected = timezone === opt.value;
+            return (
+              <Pressable
+                key={opt.value || 'auto'}
+                onPress={() => setTimezone(opt.value)}
+                style={[
+                  styles.tzChip,
+                  { borderColor: selected ? colors.accent : colors.border, backgroundColor: selected ? colors.accent + '22' : 'transparent' },
+                ]}
+              >
+                <Text style={[styles.tzChipText, { color: selected ? colors.accent : colors.textSecondary }]}>
+                  {opt.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </Card>
 
       {/* Photos section */}
@@ -394,6 +448,21 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 13,
     marginTop: -Spacing.one,
+  },
+  tzRow: {
+    gap: Spacing.one,
+    paddingVertical: Spacing.one,
+  },
+  tzChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginRight: 6,
+  },
+  tzChipText: {
+    fontFamily: Fonts.sans,
+    fontSize: 12,
   },
   photoRow: {
     flexDirection: 'row',

@@ -34,6 +34,12 @@ export type MemberProfile = {
   contactPhotoUrl?: string | null;
   contactPhotoFocalX?: number | null;
   contactPhotoFocalY?: number | null;
+  phone?: string | null;
+  email?: string | null;
+  city?: string | null;
+  country?: string | null;
+  timezone?: string | null;
+  birthday?: string | null;
   familyPhotos: Array<{ photoUrl: string; sortOrder?: number }>;
 };
 
@@ -139,6 +145,12 @@ export async function putMemberProfile(
     contactPhotoUrl?: string;
     contactPhotoFocalX?: number;
     contactPhotoFocalY?: number;
+    phone?: string;
+    email?: string;
+    city?: string;
+    country?: string;
+    timezone?: string;
+    birthday?: string;
     familyPhotos?: string[];
   },
 ) {
