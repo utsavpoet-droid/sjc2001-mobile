@@ -86,6 +86,10 @@ export interface CommitteeSummaryDto {
   iconName: string | null;
   coverImageUrl: string | null;
   eventContext: string | null;
+  /** TripEvent.id this committee plans for (Phase 2). */
+  eventId: number | null;
+  /** Parent committee for cross-committee budget rollup (one level deep). */
+  parentCommitteeId: number | null;
   memberCount: number;
   postCount: number;
   myRole: CommitteeRole;
@@ -206,6 +210,10 @@ export interface CommitteeDetailDto {
   iconName: string | null;
   coverImageUrl: string | null;
   eventContext: string | null;
+  /** TripEvent.id this committee plans for (Phase 2). */
+  eventId: number | null;
+  /** Parent committee for cross-committee budget rollup. */
+  parentCommitteeId: number | null;
   archivedAt: string | null;
   members: CommitteeMemberDto[];
   caller: {
@@ -408,6 +416,344 @@ export interface CommitteeFeedPage {
   hasMore: boolean;
 }
 
+// ----- Committee planning: templates, option lists, options, votes, budget -----
+
+export type CommitteeOptionSelectionMode = 'CHAIR_DECIDES' | 'MEMBER_VOTE';
+
+export type CommitteeOptionStatus =
+  | 'PROPOSED'
+  | 'SHORTLISTED'
+  | 'SELECTED'
+  | 'REJECTED';
+
+export type CommitteeOptionSampleStatus =
+  | 'NONE'
+  | 'REQUESTED'
+  | 'RECEIVED'
+  | 'APPROVED'
+  | 'REJECTED';
+
+export type CommitteeOptionFieldKind =
+  | 'text'
+  | 'longtext'
+  | 'number'
+  | 'money'
+  | 'boolean'
+  | 'select'
+  | 'url'
+  | 'date';
+
+export interface CommitteeOptionFieldDef {
+  key: string;
+  kind: CommitteeOptionFieldKind;
+  label: string;
+  required?: boolean;
+  max?: number;
+  min?: number;
+  unit?: string;
+  options?: string[];
+}
+
+export interface CommitteeOptionFieldsSchema {
+  fields: CommitteeOptionFieldDef[];
+}
+
+export interface CommitteeOptionBudgetRule {
+  formula: string;
+  context?: string[];
+}
+
+export interface CommitteeTemplateDto {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  iconName: string | null;
+  colorHex: string;
+  version: number;
+  isBuiltIn: boolean;
+  isActive: boolean;
+  optionListTemplates: CommitteeOptionListTemplateDto[];
+  taskTemplates: CommitteeTaskTemplateDto[];
+}
+
+export interface CommitteeOptionListTemplateDto {
+  id: number;
+  templateId: number;
+  key: string;
+  name: string;
+  description: string | null;
+  selectionLimit: number | null;
+  selectionMode: CommitteeOptionSelectionMode;
+  selectionThresholdPercent: number | null;
+  fieldsSchema: CommitteeOptionFieldsSchema;
+  budgetRule: CommitteeOptionBudgetRule | null;
+  allowMemberPropose: boolean;
+  allowImages: boolean;
+  sortOrder: number;
+}
+
+export interface CommitteeTaskTemplateDto {
+  id: number;
+  templateId: number;
+  title: string;
+  description: string | null;
+  priority: CommitteeTaskPriority;
+  dueOffsetDays: number | null;
+  sortOrder: number;
+}
+
+export interface ApplyTemplateResultDto {
+  templateId: number;
+  templateSlug: string;
+  committee: { id: number; templateId: number | null; templateAppliedAt: string | null };
+  createdListKeys: string[];
+  createdTaskTitles: string[];
+  skippedListKeys: string[];
+  warnings?: string[];
+}
+
+export interface CommitteeOptionImageDto {
+  key: string;
+  url: string | null;
+}
+
+export interface CommitteeOptionDto {
+  id: number;
+  optionListId: number;
+  title: string;
+  description: string | null;
+  imageKeys: string[];
+  images?: CommitteeOptionImageDto[];
+  fields: Record<string, unknown>;
+  selectionStatus: CommitteeOptionStatus;
+  sampleStatus: CommitteeOptionSampleStatus;
+  proposedById: number;
+  proposedBy?: MemberUserRefDto;
+  selectedById: number | null;
+  selectedAt: string | null;
+  selectedOverBudget: boolean;
+  voteCount: number;
+  sortOrder: number;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CommitteeOptionListDto {
+  id: number;
+  committeeId: number;
+  sourceTemplateId: number | null;
+  key: string;
+  name: string;
+  description: string | null;
+  selectionLimit: number | null;
+  selectionMode: CommitteeOptionSelectionMode;
+  selectionThresholdPercent: number | null;
+  fieldsSchema: CommitteeOptionFieldsSchema;
+  budgetRule: CommitteeOptionBudgetRule | null;
+  allowMemberPropose: boolean;
+  allowImages: boolean;
+  sortOrder: number;
+  archivedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  options: CommitteeOptionDto[];
+}
+
+export interface CommitteeBudgetDto {
+  id: number;
+  committeeId: number;
+  totalBudget: string;
+  currency: string;
+  notes: string | null;
+  setById: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CommitteeBudgetWarningKind =
+  | 'OVER_BUDGET'
+  | 'UNEVALUABLE'
+  | 'CHILD_CURRENCY_MISMATCH'
+  | 'CHILD_OVER_BUDGET';
+
+export interface CommitteeBudgetWarningDto {
+  /** Set for OVER_BUDGET / UNEVALUABLE option-level warnings. */
+  optionId?: number;
+  listId?: number;
+  /** Set for CHILD_* warnings. */
+  childCommitteeId?: number;
+  kind: CommitteeBudgetWarningKind;
+  reason: string;
+}
+
+export interface CommitteeBudgetEventContextDto {
+  /** Resolved at snapshot time from the linked TripEvent. */
+  eventId?: number;
+  eventTitle?: string;
+  /** Confirmed attendees of the linked event — formulas reference this as `attendeeCount`. */
+  attendeeCount?: number;
+}
+
+export interface CommitteeBudgetRollupChildDto {
+  committeeId: number;
+  name: string;
+  slug: string;
+  currency: string;
+  hasBudget: boolean;
+  totalBudget: number;
+  committedSpend: number;
+  tentativeSpend: number;
+  isOverBudget: boolean;
+  /** False when child currency differs from parent — child is excluded from totals. */
+  currencyMatchesParent: boolean;
+}
+
+export interface CommitteeBudgetRollupDto {
+  totalCommittedIncludingChildren: number;
+  totalTentativeIncludingChildren: number;
+  children: CommitteeBudgetRollupChildDto[];
+}
+
+export interface CommitteeBudgetSnapshotDto {
+  hasBudget: boolean;
+  totalBudget: number;
+  currency: string;
+  committedSpend: number;
+  tentativeSpend: number;
+  remaining: number;
+  delta: number;
+  isOverBudget: boolean;
+  byList: Array<{
+    listId: number;
+    listKey: string;
+    listName: string;
+    committed: number;
+    tentative: number;
+  }>;
+  warnings: CommitteeBudgetWarningDto[];
+  /** Resolved live event context — present when committee is linked to a TripEvent. */
+  context?: CommitteeBudgetEventContextDto;
+  /** Present only when this committee has child committees. One level deep. */
+  rollup?: CommitteeBudgetRollupDto;
+}
+
+export interface CommitteeBudgetResponseDto {
+  budget: CommitteeBudgetDto | null;
+  snapshot: CommitteeBudgetSnapshotDto;
+  commonCurrencies: readonly string[];
+}
+
+export interface CreateCommitteeOptionRequest {
+  title: string;
+  description?: string | null;
+  fields: Record<string, unknown>;
+  imageKeys?: string[];
+}
+
+export interface UpdateCommitteeOptionStatusRequest {
+  status: CommitteeOptionStatus;
+  acknowledgeOverBudget?: boolean;
+}
+
+export interface UpdateCommitteeOptionSampleRequest {
+  sampleStatus: CommitteeOptionSampleStatus;
+  /** Free-text reason captured into the sample timeline (Phase 2). */
+  note?: string | null;
+}
+
+export interface CommitteeOptionSampleEventDto {
+  id: number;
+  fromStatus: CommitteeOptionSampleStatus;
+  toStatus: CommitteeOptionSampleStatus;
+  note: string | null;
+  changedById: number;
+  changedBy: MemberUserRefDto | null;
+  createdAt: string;
+}
+
+export interface CommitteeOptionSampleTimelineResponse {
+  events: CommitteeOptionSampleEventDto[];
+}
+
+export interface VoteCommitteeOptionResponse {
+  voted: boolean;
+  voteCount: number;
+  autoPromoted: 'SELECTED' | 'SHORTLISTED' | null;
+  autoPromoteBlocked: string | null;
+}
+
+export interface PresignOptionImageRequest {
+  contentType: string;
+  filename?: string;
+}
+
+export interface PresignOptionImageResponse {
+  key: string;
+  uploadUrl: string;
+}
+
+export interface SetCommitteeBudgetRequest {
+  totalBudget: number;
+  currency?: string;
+  notes?: string | null;
+}
+
+export interface ApplyCommitteeTemplateRequest {
+  templateId?: number;
+  templateSlug?: string;
+}
+
+// ----- Custom template authoring (Phase 2, editor-only) -----
+
+export interface OptionListTemplateAuthorInput {
+  key: string;
+  name: string;
+  description?: string | null;
+  selectionLimit?: number | null;
+  selectionMode?: CommitteeOptionSelectionMode;
+  selectionThresholdPercent?: number | null;
+  fieldsSchema: CommitteeOptionFieldsSchema;
+  budgetRule?: CommitteeOptionBudgetRule | null;
+  allowMemberPropose?: boolean;
+  allowImages?: boolean;
+  sortOrder?: number;
+}
+
+export interface TaskTemplateAuthorInput {
+  title: string;
+  description?: string | null;
+  priority?: CommitteeTaskPriority;
+  dueOffsetDays?: number | null;
+  sortOrder?: number;
+}
+
+export interface CreateCommitteeTemplateRequest {
+  slug: string;
+  name: string;
+  description?: string | null;
+  iconName?: string | null;
+  colorHex?: string;
+  isActive?: boolean;
+  /** Clone lists/tasks from this slug; ignored if optionLists/tasks are also provided. */
+  fromTemplateSlug?: string;
+  optionLists?: OptionListTemplateAuthorInput[];
+  tasks?: TaskTemplateAuthorInput[];
+}
+
+export interface UpdateCommitteeTemplateRequest {
+  name?: string;
+  description?: string | null;
+  iconName?: string | null;
+  colorHex?: string;
+  isActive?: boolean;
+  /** Full replacement when provided. */
+  optionLists?: OptionListTemplateAuthorInput[];
+  /** Full replacement when provided. */
+  tasks?: TaskTemplateAuthorInput[];
+}
+
 // ----- Envelope (matches /api/v1/* convention from lib/mobileApi.ts) -----
 
 export interface ApiSuccessEnvelope<T> {
@@ -426,6 +772,17 @@ export interface ApiErrorEnvelope {
       | 'MFA_PENDING'
       | 'VALIDATION_ERROR'
       | 'NOT_FOUND'
+      | 'CONFLICT'
+      | 'OVER_BUDGET'
+      | 'SELECTION_LIMIT'
+      | 'CURRENCY_LOCKED'
+      | 'INVALID_KEY'
+      | 'TOO_MANY_IMAGES'
+      | 'UNSUPPORTED_TYPE'
+      | 'TEMPLATE_BUILTIN'
+      | 'TEMPLATE_INVALID'
+      | 'PARENT_NOT_TOPLEVEL'
+      | 'EVENT_NOT_FOUND'
       | 'SERVER_ERROR'
       | string;
     message: string;
