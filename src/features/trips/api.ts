@@ -1,5 +1,6 @@
 import { requestContentJson } from '@/lib/api/client';
 import type {
+  CreateTripTaskBody,
   MyTravelRecord,
   ReportPaymentBody,
   SubmitExpenseBody,
@@ -10,6 +11,8 @@ import type {
   TripBalance,
   TripExpense,
   TripSummary,
+  TripTask,
+  UpdateTripTaskBody,
   UpdateTravelBody,
 } from '@shared/contracts/trips-contract';
 
@@ -123,6 +126,54 @@ export async function addPhotoToAlbum(
     method: 'POST',
     headers: authJson(token),
     body: JSON.stringify({ url, caption: caption ?? null }),
+  });
+}
+
+export async function deleteTripAlbumPhoto(
+  token: string,
+  tripId: number,
+  albumId: number,
+  photoId: number,
+): Promise<unknown> {
+  return requestContentJson(
+    `/events/trip/${tripId}/albums/${albumId}/photos/${photoId}`,
+    { method: 'DELETE', headers: auth(token) },
+  );
+}
+
+export async function getTripTasks(token: string, tripId: number): Promise<TripTask[]> {
+  return requestContentJson(`/events/trip/${tripId}/tasks`, { headers: auth(token) });
+}
+
+export async function createTripTask(
+  token: string,
+  tripId: number,
+  body: CreateTripTaskBody,
+): Promise<TripTask> {
+  return requestContentJson(`/events/trip/${tripId}/tasks`, {
+    method: 'POST',
+    headers: authJson(token),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateTripTask(
+  token: string,
+  tripId: number,
+  taskId: number,
+  body: UpdateTripTaskBody,
+): Promise<TripTask> {
+  return requestContentJson(`/events/trip/${tripId}/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: authJson(token),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteTripTask(token: string, tripId: number, taskId: number): Promise<void> {
+  await requestContentJson(`/events/trip/${tripId}/tasks/${taskId}`, {
+    method: 'DELETE',
+    headers: auth(token),
   });
 }
 
