@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'rea
 
 import { BackLink } from '@/components/ui/back-link';
 import { Card, GhostButton, PrimaryButton, SectionTitle } from '@/components/ui/primitives';
+import { RichText } from '@/components/ui/rich-text';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { getPolls, postPollVote } from '@/features/content/api';
@@ -89,7 +90,9 @@ export default function PollsScreen() {
           return (
             <Card key={poll.id} style={styles.card}>
               <Text style={[styles.title, { color: colors.text }]}>{poll.title}</Text>
-              {!isCompleted && poll.description ? <Text style={[styles.description, { color: colors.textSecondary }]}>{poll.description}</Text> : null}
+              {!isCompleted && poll.description ? (
+                <RichText text={poll.description} color={colors.textSecondary} linkColor={colors.accent} />
+              ) : null}
               {!isCompleted ? (
                 <Text style={[styles.meta, { color: colors.textSecondary }]}>
                   {poll.totalResponses} responses · {poll.allowMultiple ? `Select up to ${poll.maxSelections ?? poll.options.length}` : 'Choose one'}
