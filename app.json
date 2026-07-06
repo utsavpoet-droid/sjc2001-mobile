@@ -2,7 +2,7 @@
   "expo": {
     "name": "SJC 2001",
     "slug": "sjc2001-mobile",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "scheme": "sjc2001",
@@ -13,8 +13,11 @@
       "bundleIdentifier": "com.utsav.sjc2001",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSPhotoLibraryUsageDescription": "SJC 2001 needs access to your photo library so you can choose photos for your member profile (school, current, and family photos), upload trip albums and expense receipts, and attach files to committee documents. Photos you select are uploaded only when you tap Save or Submit.",
-        "NSPhotoLibraryAddUsageDescription": "SJC 2001 may save photos you share back to your library when you use the Share or Save action.",
+        "NSPhotoLibraryUsageDescription": "Choose photos for your profile, expense receipts, travel tickets, and shared trip albums. Photos are uploaded only when you tap Save or Submit.",
+        "NSPhotoLibraryAddUsageDescription": "Save trip album photos shared by your batchmates back to your phone library when you tap Save.",
+        "NSCameraUsageDescription": "Take a photo of a receipt, travel ticket, or trip moment to attach to expenses, travel plans, or shared albums.",
+        "NSMicrophoneUsageDescription": "Used only when recording video for trip albums. Audio is not captured otherwise.",
+        "NSFaceIDUsageDescription": "Use Face ID to unlock Silver Circle quickly and securely.",
         "NSAppTransportSecurity": {
           "NSAllowsArbitraryLoads": true,
           "NSAllowsLocalNetworking": true
@@ -62,7 +65,8 @@
       ],
       "expo-notifications",
       "expo-secure-store",
-      "expo-sharing"
+      "expo-sharing",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

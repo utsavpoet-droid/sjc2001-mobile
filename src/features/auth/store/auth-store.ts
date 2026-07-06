@@ -40,6 +40,8 @@ type AuthState = {
   biometricEnabled: boolean;
   biometricLabel: string | null;
   pendingTotpChallenge: PendingTotpChallenge | null;
+  isLocked: boolean;
+  backgroundedAt: number | null;
   hydrate: () => Promise<void>;
   signIn: (input: MobileLoginRequest) => Promise<LoginResult>;
   completeTotpSignIn: (totpCode: string) => Promise<LoginResult>;
@@ -48,6 +50,9 @@ type AuthState = {
   refreshSession: () => Promise<string | null>;
   setBiometricEnabled: (enabled: boolean) => Promise<void>;
   unlockWithBiometrics: () => Promise<string | null>;
+  lock: () => void;
+  markBackgrounded: () => void;
+  evaluateForegroundLock: (lockAfterMs?: number) => void;
   clearError: () => void;
   clearPendingTotpChallenge: () => void;
 };
@@ -160,9 +165,34 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   biometricEnabled: false,
   biometricLabel: null,
   pendingTotpChallenge: null,
+  isLocked: false,
+  backgroundedAt: null,
 
   clearError: () => set({ errorMessage: null }),
   clearPendingTotpChallenge: () => set({ pendingTotpChallenge: null }),
+
+  lock: () => {
+    const { user, biometricEnabled } = get();
+    if (!user || !biometricEnabled) return;
+    set({ isLocked: true });
+  },
+
+  markBackgrounded: () => {
+    set({ backgroundedAt: Date.now() });
+  },
+
+  evaluateForegroundLock: (lockAfterMs = 30_000) => {
+    const { user, biometricEnabled, backgroundedAt, isLocked } = get();
+    if (!user || !biometricEnabled || isLocked) {
+      set({ backgroundedAt: null });
+      return;
+    }
+    if (backgroundedAt && Date.now() - backgroundedAt >= lockAfterMs) {
+      set({ isLocked: true, backgroundedAt: null });
+      return;
+    }
+    set({ backgroundedAt: null });
+  },
 
   hydrate: async () => {
     if (get().hydrated || get().busy) return;
@@ -178,10 +208,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         getBiometricInfo(),
       ]);
 
+      const biometricActive = biometricEnabled && biometricInfo.available;
       const sessionState = {
-        biometricEnabled: biometricEnabled && biometricInfo.available,
+        biometricEnabled: biometricActive,
         biometricLabel: biometricInfo.available ? biometricInfo.label : null,
       };
+      const lockOnBoot = biometricActive && Boolean(refreshToken);
 
       if (cachedAccessToken && cachedExpiresAt && cachedUser && Date.now() < cachedExpiresAt - 15_000) {
         setRuntimeAccessToken(cachedAccessToken);
@@ -193,6 +225,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           refreshToken,
           user: cachedUser,
           expiresAt: cachedExpiresAt,
+          isLocked: lockOnBoot,
+          backgroundedAt: null,
         });
         return;
       }
@@ -208,6 +242,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: null,
           expiresAt: null,
           pendingTotpChallenge: null,
+          isLocked: false,
+          backgroundedAt: null,
         });
         return;
       }
@@ -230,6 +266,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           expiresAt: Date.now() + refreshed.expiresIn * 1000,
           user: refreshed.user,
           pendingTotpChallenge: null,
+          isLocked: lockOnBoot,
+          backgroundedAt: null,
         });
     } catch (error) {
       const [refreshToken, cachedAccessToken, cachedExpiresAt, cachedUser, biometricEnabled, biometricInfo] = await Promise.all([
@@ -258,11 +296,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           user: null,
           expiresAt: null,
           pendingTotpChallenge: null,
+          isLocked: false,
+          backgroundedAt: null,
           errorMessage: error instanceof Error ? error.message : 'Session restore failed',
         });
         return;
       }
 
+      const biometricActive = sessionState.biometricEnabled;
       set({
         ...sessionState,
         hydrated: true,
@@ -271,6 +312,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         refreshToken,
         user: cachedUser,
         expiresAt: cachedExpiresAt,
+        isLocked: biometricActive && Boolean(refreshToken),
+        backgroundedAt: null,
         errorMessage: error instanceof Error ? error.message : 'Session restore failed',
       });
     }
@@ -302,6 +345,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         expiresAt,
         user: result.user,
         pendingTotpChallenge: null,
+        isLocked: false,
+        backgroundedAt: null,
       });
       return { kind: 'signed_in' };
     } catch (error) {
@@ -345,6 +390,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         expiresAt,
         user: result.user,
         pendingTotpChallenge: null,
+        isLocked: false,
+        backgroundedAt: null,
       });
       return { kind: 'signed_in' };
     } catch (error) {
@@ -379,6 +426,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         expiresAt: null,
         user: null,
         pendingTotpChallenge: null,
+        isLocked: false,
+        backgroundedAt: null,
       });
     }
   },
@@ -486,12 +535,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           refreshToken,
           user,
           expiresAt,
+          isLocked: false,
+          backgroundedAt: null,
         });
         return accessToken;
       }
 
       const refreshed = await get().refreshSession();
-      set({ busy: false });
+      set({ busy: false, isLocked: false, backgroundedAt: null });
       return refreshed;
     } catch (error) {
       set({

@@ -82,6 +82,12 @@ export interface TripBalance {
   balance: number;
   isSettled: boolean;
   hasPendingConfirmation: boolean;
+  paymentHandles?: {
+    venmo: string | null;
+    zelle: string | null;
+    paypal: string | null;
+    upi: string | null;
+  };
 }
 
 export interface TripAlbum {
@@ -132,13 +138,62 @@ export interface SubmitExpenseBody {
   totalAmount: number;
   notes?: string | null;
   receiptUrl?: string | null;
-  splits: [];
+  splitType?: 'EQUAL';
+  splits: { memberId: number; shareAmount: number }[];
 }
 
 export interface ReportPaymentBody {
   amount: number;
   notes?: string;
   date: string;
+}
+
+export type TripTaskStatus = 'OPEN' | 'IN_PROGRESS' | 'BLOCKED' | 'DONE' | 'CANCELLED';
+export type TripTaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+
+export interface TripTaskAssignee {
+  id: number;
+  memberUser: {
+    id: number;
+    member: {
+      id: number;
+      name: string;
+      photos: { photoUrl: string }[];
+    } | null;
+  };
+}
+
+export interface TripTask {
+  id: number;
+  title: string;
+  description: string | null;
+  status: TripTaskStatus;
+  priority: TripTaskPriority;
+  dueDate: string | null;
+  completedAt: string | null;
+  createdById: number;
+  assignees: TripTaskAssignee[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTripTaskBody {
+  title: string;
+  description?: string | null;
+  priority?: TripTaskPriority;
+  dueDate?: string | null;
+  assigneeIds?: number[];
+  assigneeMemberIds?: number[];
+}
+
+export interface UpdateTripTaskBody {
+  title?: string;
+  description?: string | null;
+  status?: TripTaskStatus;
+  priority?: TripTaskPriority;
+  dueDate?: string | null;
+  assigneeIds?: number[];
+  assigneeMemberIds?: number[];
 }
 
 export interface UpdateTravelBody {

@@ -6,6 +6,9 @@ import { router, useLocalSearchParams } from 'expo-router';
 import React, { useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
+  Linking,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -29,6 +32,7 @@ import {
   getTripExpenses,
   updateMyTravel,
 } from '@/features/trips/api';
+import { buildPaymentOptions, type PaymentOption } from '@/features/trips/payment-links';
 import { computeSettlement } from '@/features/trips/settle-balances';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import type {
@@ -335,6 +339,15 @@ function QuickActions({ tripId }: { tripId: number }) {
       onPress: () => {
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         router.push(`/(member)/trips/${tripId}/report-payment` as never);
+      },
+    },
+    {
+      key: 'tasks',
+      icon: 'checkmark-done-outline',
+      label: 'Trip\nTasks',
+      onPress: () => {
+        void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        router.push(`/(member)/trips/${tripId}/tasks` as never);
       },
     },
   ];
@@ -1062,13 +1075,56 @@ function ExpensesContent({ expenses }: { expenses: TripExpense[] }) {
 function BalanceContent({
   balances,
   myMemberId,
+  tripTitle,
 }: {
   balances: TripBalance[];
   myMemberId: number | null;
+  tripTitle: string;
 }) {
   const colors = Colors[resolveThemeMode(useColorScheme())];
   const [showSettlement, setShowSettlement] = useState(false);
+  const [paySheet, setPaySheet] = useState<{
+    payeeName: string;
+    amount: number;
+    options: PaymentOption[];
+  } | null>(null);
   const settlement = useMemo(() => computeSettlement(balances), [balances]);
+  const handlesByMemberId = useMemo(() => {
+    const map = new Map<number, TripBalance['paymentHandles']>();
+    for (const b of balances) {
+      if (b.memberId != null && b.paymentHandles) map.set(b.memberId, b.paymentHandles);
+    }
+    return map;
+  }, [balances]);
+
+  function openPaySheet(toId: number, toName: string, amount: number) {
+    const handles = handlesByMemberId.get(toId);
+    const memo = `${tripTitle} settle-up`;
+    const options = buildPaymentOptions(handles, amount, memo);
+    if (options.length === 0) {
+      Alert.alert(
+        'No payment handle',
+        `${toName} hasn't added a Venmo, Zelle, PayPal, or UPI handle yet. Ask them to add one in their profile.`,
+      );
+      return;
+    }
+    setPaySheet({ payeeName: toName, amount, options });
+  }
+
+  async function handleOpenOption(opt: PaymentOption) {
+    try {
+      const can = await Linking.canOpenURL(opt.url);
+      if (can) {
+        await Linking.openURL(opt.url);
+      } else if (opt.fallbackUrl) {
+        await Linking.openURL(opt.fallbackUrl);
+      } else {
+        Alert.alert(`Can't open ${opt.label}`, `Send the payment to ${opt.handle} manually.`);
+      }
+    } catch {
+      Alert.alert(`Can't open ${opt.label}`, `Send the payment to ${opt.handle} manually.`);
+    }
+  }
 
   return (
     <View style={styles.tabContent}>
@@ -1112,17 +1168,31 @@ function BalanceContent({
             />
           </Pressable>
           {showSettlement
-            ? settlement.map((tx, i) => (
-                <View key={i} style={styles.settleTx}>
-                  <Ionicons name="arrow-forward" size={14} color={colors.accent} />
-                  <Text style={[styles.settleTxText, { color: colors.textSecondary }]}>
-                    {tx.fromName} pays {tx.toName}{' '}
-                    <Text style={{ color: colors.text, fontFamily: Fonts.rounded }}>
-                      ${tx.amount.toFixed(2)}
+            ? settlement.map((tx, i) => {
+                const isMyDebt = tx.fromId === myMemberId;
+                return (
+                  <View key={i} style={styles.settleTx}>
+                    <Ionicons name="arrow-forward" size={14} color={colors.accent} />
+                    <Text style={[styles.settleTxText, { color: colors.textSecondary, flex: 1 }]}>
+                      {tx.fromName} pays {tx.toName}{' '}
+                      <Text style={{ color: colors.text, fontFamily: Fonts.rounded }}>
+                        ${tx.amount.toFixed(2)}
+                      </Text>
                     </Text>
-                  </Text>
-                </View>
-              ))
+                    {isMyDebt ? (
+                      <Pressable
+                        onPress={() => openPaySheet(tx.toId, tx.toName, tx.amount)}
+                        style={({ pressed }) => [
+                          styles.payChip,
+                          { backgroundColor: colors.accent, opacity: pressed ? 0.85 : 1 },
+                        ]}>
+                        <Ionicons name="card-outline" size={14} color={colors.background} />
+                        <Text style={[styles.payChipText, { color: colors.background }]}>Pay</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                );
+              })
             : null}
         </Card>
       ) : balances.length > 0 ? (
@@ -1131,6 +1201,56 @@ function BalanceContent({
           <Text style={[styles.settledText, { color: colors.success }]}>Everyone is settled up!</Text>
         </Card>
       ) : null}
+
+      <Modal
+        visible={paySheet !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPaySheet(null)}>
+        <Pressable style={styles.paySheetBackdrop} onPress={() => setPaySheet(null)}>
+          <Pressable
+            style={[styles.paySheetCard, { backgroundColor: colors.background }]}
+            onPress={(e) => e.stopPropagation()}>
+            <Text style={[styles.paySheetTitle, { color: colors.text }]}>
+              Pay {paySheet?.payeeName}
+            </Text>
+            <Text style={[styles.paySheetAmount, { color: colors.accent }]}>
+              ${paySheet?.amount.toFixed(2)}
+            </Text>
+            <Text style={[styles.paySheetHint, { color: colors.textMuted }]}>
+              Opens the payment app pre-filled. Confirm the amount before sending.
+            </Text>
+            {paySheet?.options.map((opt) => (
+              <Pressable
+                key={opt.app}
+                onPress={() => void handleOpenOption(opt)}
+                style={({ pressed }) => [
+                  styles.paySheetOption,
+                  {
+                    backgroundColor: colors.surface,
+                    borderColor: colors.border,
+                    opacity: pressed ? 0.85 : 1,
+                  },
+                ]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.paySheetOptionLabel, { color: colors.text }]}>
+                    {opt.label}
+                  </Text>
+                  <Text style={[styles.paySheetOptionHandle, { color: colors.textMuted }]}>
+                    {opt.handle}
+                  </Text>
+                </View>
+                <Ionicons name="open-outline" size={18} color={colors.accent} />
+              </Pressable>
+            ))}
+            <Pressable
+              onPress={() => setPaySheet(null)}
+              style={({ pressed }) => [styles.paySheetClose, { opacity: pressed ? 0.7 : 1 }]}>
+              <Text style={[styles.paySheetCloseText, { color: colors.textSecondary }]}>Cancel</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -1356,7 +1476,11 @@ export default function TripDetailScreen() {
           ) : activeTab === 'expenses' ? (
             <ExpensesContent expenses={expenses.data ?? []} />
           ) : activeTab === 'balance' ? (
-            <BalanceContent balances={balances.data ?? []} myMemberId={myMemberId} />
+            <BalanceContent
+              balances={balances.data ?? []}
+              myMemberId={myMemberId}
+              tripTitle={trip.title}
+            />
           ) : (
             <AlbumsContent albums={albums.data ?? []} tripId={tripId} />
           )}
@@ -1970,6 +2094,70 @@ const styles = StyleSheet.create({
   settledText: {
     fontFamily: Fonts.rounded,
     fontSize: 16,
+  },
+  payChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  payChipText: {
+    fontFamily: Fonts.rounded,
+    fontSize: 12,
+  },
+  paySheetBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  paySheetCard: {
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.four,
+    paddingBottom: Spacing.six,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    gap: Spacing.two,
+  },
+  paySheetTitle: {
+    fontFamily: Fonts.rounded,
+    fontSize: 18,
+  },
+  paySheetAmount: {
+    fontFamily: Fonts.rounded,
+    fontSize: 28,
+  },
+  paySheetHint: {
+    fontFamily: Fonts.sans,
+    fontSize: 12,
+    marginBottom: Spacing.two,
+  },
+  paySheetOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingVertical: Spacing.three,
+    paddingHorizontal: Spacing.three,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  paySheetOptionLabel: {
+    fontFamily: Fonts.rounded,
+    fontSize: 15,
+  },
+  paySheetOptionHandle: {
+    fontFamily: Fonts.sans,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  paySheetClose: {
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  paySheetCloseText: {
+    fontFamily: Fonts.sans,
+    fontSize: 14,
   },
   // Albums
   albumGrid: {

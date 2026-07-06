@@ -39,6 +39,10 @@ export type MemberProfile = {
   city?: string | null;
   country?: string | null;
   timezone?: string | null;
+  venmoHandle?: string | null;
+  zelleHandle?: string | null;
+  paypalHandle?: string | null;
+  upiHandle?: string | null;
   birthday?: string | null;
   familyPhotos: Array<{ photoUrl: string; sortOrder?: number }>;
 };
@@ -150,6 +154,10 @@ export async function putMemberProfile(
     city?: string;
     country?: string;
     timezone?: string;
+    venmoHandle?: string;
+    zelleHandle?: string;
+    paypalHandle?: string;
+    upiHandle?: string;
     birthday?: string;
     familyPhotos?: string[];
   },

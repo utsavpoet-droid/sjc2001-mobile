@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -18,9 +18,10 @@ import { Card, PrimaryButton } from '@/components/ui/primitives';
 import { Screen } from '@/components/ui/screen';
 import { Colors, Fonts, Spacing, resolveThemeMode } from '@/constants/theme';
 import { useAuthStore } from '@/features/auth/store/auth-store';
-import { submitExpense } from '@/features/trips/api';
+import { getTripAttendees, submitExpense } from '@/features/trips/api';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { requestContentJson } from '@/lib/api/client';
+import { computeEqualSplits } from '@/lib/equalSplit';
 import type { ExpenseCategory } from '@shared/contracts/trips-contract';
 
 const CATEGORIES: { key: ExpenseCategory; label: string; icon: string }[] = [
@@ -52,19 +53,56 @@ export default function SubmitExpenseScreen() {
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [receiptName, setReceiptName] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [splitMode, setSplitMode] = useState<'all' | 'specific'>('all');
+  const [selectedSplitIds, setSelectedSplitIds] = useState<number[]>([]);
+
+  const attendeesQuery = useQuery({
+    queryKey: ['trip-attendees-for-expense', tripId],
+    queryFn: async () => {
+      const token = await getValidAccessToken();
+      if (!token) throw new Error('Not authenticated');
+      return getTripAttendees(token, tripId);
+    },
+    enabled: Number.isFinite(tripId) && tripId > 0,
+  });
+
+  const confirmedAttendees = useMemo(
+    () =>
+      (attendeesQuery.data ?? []).filter(
+        (a) => a.status === 'CONFIRMED' && a.memberId != null,
+      ),
+    [attendeesQuery.data],
+  );
+  const confirmedAttendeeIds = useMemo(
+    () => confirmedAttendees.map((a) => a.memberId as number),
+    [confirmedAttendees],
+  );
+
+  const participantIds =
+    splitMode === 'all' ? confirmedAttendeeIds : selectedSplitIds;
+  const totalNum = parseFloat(amount) || 0;
+  const previewPerPerson =
+    totalNum > 0 && participantIds.length > 0
+      ? (totalNum / participantIds.length).toFixed(2)
+      : null;
 
   const mutation = useMutation({
     mutationFn: async () => {
       const token = await getValidAccessToken();
       if (!token) throw new Error('Not authenticated');
+      if (participantIds.length === 0) {
+        throw new Error('Select at least one person to split between.');
+      }
+      const splits = computeEqualSplits(totalNum, participantIds);
       return submitExpense(token, tripId, {
         title: title.trim(),
         category,
         date,
-        totalAmount: parseFloat(amount) || 0,
+        totalAmount: totalNum,
         notes: notes.trim() || null,
         receiptUrl,
-        splits: [],
+        splitType: 'EQUAL',
+        splits,
       });
     },
     onSuccess: () => {
@@ -116,7 +154,11 @@ export default function SubmitExpenseScreen() {
     }
   }
 
-  const canSubmit = title.trim().length > 0 && parseFloat(amount) > 0 && !uploading;
+  const canSubmit =
+    title.trim().length > 0 &&
+    parseFloat(amount) > 0 &&
+    !uploading &&
+    participantIds.length > 0;
 
   return (
     <Screen>
@@ -190,6 +232,66 @@ export default function SubmitExpenseScreen() {
               />
             </View>
           </View>
+        </Card>
+
+        <Card style={styles.card}>
+          <Text style={[styles.label, { color: colors.textSecondary }]}>Split between</Text>
+          <View style={styles.splitRadioRow}>
+            {(['all', 'specific'] as const).map((mode) => {
+              const active = splitMode === mode;
+              return (
+                <Pressable
+                  key={mode}
+                  onPress={() => setSplitMode(mode)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: active ? colors.accentSoft : colors.surfaceMuted,
+                      borderColor: active ? colors.accent : colors.border,
+                    },
+                  ]}>
+                  <Text style={[styles.chipText, { color: active ? colors.accent : colors.textSecondary }]}>
+                    {mode === 'all'
+                      ? `All confirmed (${confirmedAttendeeIds.length})`
+                      : 'Specific members'}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+          {splitMode === 'specific' && (
+            <View style={styles.chipWrap}>
+              {confirmedAttendees.map((a) => {
+                const mid = a.memberId as number;
+                const selected = selectedSplitIds.includes(mid);
+                return (
+                  <Pressable
+                    key={mid}
+                    onPress={() =>
+                      setSelectedSplitIds((prev) =>
+                        prev.includes(mid) ? prev.filter((x) => x !== mid) : [...prev, mid],
+                      )
+                    }
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: selected ? colors.accentSoft : colors.surfaceMuted,
+                        borderColor: selected ? colors.accent : colors.border,
+                      },
+                    ]}>
+                    <Text style={[styles.chipText, { color: selected ? colors.accent : colors.textSecondary }]}>
+                      {a.member?.name ?? a.guestName ?? 'Member'}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+          {previewPerPerson && (
+            <Text style={[styles.previewText, { color: colors.textSecondary }]}>
+              ≈ ${previewPerPerson} per person ({participantIds.length} {participantIds.length === 1 ? 'person' : 'people'})
+            </Text>
+          )}
         </Card>
 
         <Card style={styles.card}>
@@ -306,5 +408,15 @@ const styles = StyleSheet.create({
   receiptBtnText: {
     fontFamily: Fonts.rounded,
     fontSize: 14,
+  },
+  splitRadioRow: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    flexWrap: 'wrap',
+  },
+  previewText: {
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+    marginTop: Spacing.one,
   },
 });

@@ -248,6 +248,10 @@ export default function EditProfileScreen() {
   const [title, setTitle] = useState('');
   const [comments, setComments] = useState('');
   const [timezone, setTimezone] = useState('');
+  const [venmoHandle, setVenmoHandle] = useState('');
+  const [zelleHandle, setZelleHandle] = useState('');
+  const [paypalHandle, setPaypalHandle] = useState('');
+  const [upiHandle, setUpiHandle] = useState('');
   const [schoolPhotoUrl, setSchoolPhotoUrl] = useState('');
   const [schoolPhotoFocalX, setSchoolPhotoFocalX] = useState(50);
   const [schoolPhotoFocalY, setSchoolPhotoFocalY] = useState(50);
@@ -263,6 +267,10 @@ export default function EditProfileScreen() {
     setTitle(profileQuery.data.title ?? '');
     setComments(profileQuery.data.comments ?? '');
     setTimezone(profileQuery.data.timezone ?? '');
+    setVenmoHandle(profileQuery.data.venmoHandle ?? '');
+    setZelleHandle(profileQuery.data.zelleHandle ?? '');
+    setPaypalHandle(profileQuery.data.paypalHandle ?? '');
+    setUpiHandle(profileQuery.data.upiHandle ?? '');
     setSchoolPhotoUrl(profileQuery.data.schoolPhotoUrl ?? '');
     setSchoolPhotoFocalX(profileQuery.data.schoolPhotoFocalX ?? 50);
     setSchoolPhotoFocalY(profileQuery.data.schoolPhotoFocalY ?? 50);
@@ -288,6 +296,10 @@ export default function EditProfileScreen() {
         title,
         comments,
         timezone,
+        venmoHandle,
+        zelleHandle,
+        paypalHandle,
+        upiHandle,
         schoolPhotoUrl,
         schoolPhotoFocalX,
         schoolPhotoFocalY,
@@ -333,6 +345,43 @@ export default function EditProfileScreen() {
         <Text style={[styles.charCount, { color: comments.length > 280 ? colors.danger : colors.textMuted }]}>
           {comments.length} / 300
         </Text>
+      </Card>
+
+      {/* Payment handles */}
+      <Card style={styles.section}>
+        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>PAYMENT HANDLES</Text>
+        <Text style={[styles.hint, { color: colors.textMuted }]}>
+          Used by trip settle-up links. Only batchmates can see these.
+        </Text>
+        <Input
+          value={venmoHandle}
+          onChangeText={setVenmoHandle}
+          placeholder="Venmo  (e.g. @your-venmo)"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Input
+          value={zelleHandle}
+          onChangeText={setZelleHandle}
+          placeholder="Zelle  (phone or email)"
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+        />
+        <Input
+          value={paypalHandle}
+          onChangeText={setPaypalHandle}
+          placeholder="PayPal.me username"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Input
+          value={upiHandle}
+          onChangeText={setUpiHandle}
+          placeholder="UPI ID  (e.g. name@bank)"
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
       </Card>
 
       {/* Timezone section */}

@@ -22,6 +22,9 @@ export default function SettingsScreen() {
   const logout = useAuthStore((state) => state.logout);
   const user = useAuthStore((state) => state.user);
   const busy = useAuthStore((state) => state.busy);
+  const biometricEnabled = useAuthStore((state) => state.biometricEnabled);
+  const biometricLabel = useAuthStore((state) => state.biometricLabel);
+  const setBiometricEnabled = useAuthStore((state) => state.setBiometricEnabled);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -200,6 +203,25 @@ export default function SettingsScreen() {
               Confirm Disable
             </PrimaryButton>
           </View>
+        ) : null}
+      </Card>
+
+      <Card style={styles.section}>
+        <Text style={[styles.heading, { color: colors.text }]}>App lock</Text>
+        <Text style={[styles.caption, { color: colors.textSecondary }]}>
+          {biometricLabel
+            ? biometricEnabled
+              ? `${biometricLabel} is required when you open Silver Circle. You stay signed in on this device.`
+              : `Require ${biometricLabel} when you open Silver Circle. You stay signed in on this device — no password each time.`
+            : 'Set up Face ID, Touch ID, or fingerprint unlock on this device to enable app lock.'}
+        </Text>
+        {biometricLabel ? (
+          <PrimaryButton
+            onPress={() => {
+              void setBiometricEnabled(!biometricEnabled);
+            }}>
+            {biometricEnabled ? `Turn off ${biometricLabel}` : `Turn on ${biometricLabel}`}
+          </PrimaryButton>
         ) : null}
       </Card>
 

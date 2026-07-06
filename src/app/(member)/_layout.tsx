@@ -1,14 +1,19 @@
 import { Redirect, Stack, type Href } from 'expo-router';
 
+import { LockScreen } from '@/components/auth/lock-screen';
 import { useAuthStore } from '@/features/auth/store/auth-store';
 
 export default function MemberLayout() {
   const hydrated = useAuthStore((state) => state.hydrated);
   const user = useAuthStore((state) => state.user);
+  const isLocked = useAuthStore((state) => state.isLocked);
 
   if (!hydrated) return null;
   if (!user) {
     return <Redirect href={'/(auth)/sign-in' as Href} />;
+  }
+  if (isLocked) {
+    return <LockScreen />;
   }
 
   return (

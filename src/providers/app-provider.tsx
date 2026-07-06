@@ -20,6 +20,8 @@ const queryClient = new QueryClient({
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const hydrate = useAuthStore((state) => state.hydrate);
   const getValidAccessToken = useAuthStore((state) => state.getValidAccessToken);
+  const markBackgrounded = useAuthStore((state) => state.markBackgrounded);
+  const evaluateForegroundLock = useAuthStore((state) => state.evaluateForegroundLock);
   const user = useAuthStore((state) => state.user);
   const [ready, setReady] = useState(false);
 
@@ -71,12 +73,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'background' || state === 'inactive') {
+        markBackgrounded();
+        return;
+      }
       if (state === 'active') {
+        evaluateForegroundLock();
         void getValidAccessToken();
       }
     });
     return () => sub.remove();
-  }, [getValidAccessToken]);
+  }, [evaluateForegroundLock, getValidAccessToken, markBackgrounded]);
 
   useEffect(() => {
     if (!ready || !user) return;
