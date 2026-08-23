@@ -78,8 +78,11 @@ export default function SignInScreen() {
   }
 
   async function handleAccessRequest() {
-    if (!firstName.trim() || !lastName.trim() || !phone.trim() || !email.trim()) {
-      Alert.alert('Missing details', 'Please fill in all four fields.');
+    // Phone is intentionally not required — App Review 5.1.1(v) (2026-07-17)
+    // flagged it as personal information the app's core functionality doesn't
+    // need. Name and email are enough for an admin to identify a batchmate.
+    if (!firstName.trim() || !lastName.trim() || !email.trim()) {
+      Alert.alert('Missing details', 'Please enter your first name, last name, and email.');
       return;
     }
 
@@ -91,7 +94,7 @@ export default function SignInScreen() {
         body: JSON.stringify({
           firstName: firstName.trim(),
           lastName: lastName.trim(),
-          phone: phone.trim(),
+          phone: phone.trim() || null,
           email: email.trim(),
         }),
       });
@@ -195,12 +198,20 @@ export default function SignInScreen() {
             <SectionTitle
               eyebrow="Request Access"
               title="Tell us who you are"
-              subtitle="All fields are required, just like on the website request form."
+              subtitle="We only need your name and email so a reunion admin can find you on the batch list and reply."
             />
             <Input value={firstName} onChangeText={setFirstName} placeholder="First name" />
             <Input value={lastName} onChangeText={setLastName} placeholder="Last name" />
-            <Input value={phone} onChangeText={setPhone} placeholder="Phone" keyboardType="phone-pad" />
             <Input value={email} onChangeText={setEmail} placeholder="Email" autoCapitalize="none" keyboardType="email-address" />
+            <Input
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="Phone (optional)"
+              keyboardType="phone-pad"
+            />
+            <Text style={[styles.helper, { color: colors.textSecondary }]}>
+              Phone is optional — add it only if you&apos;d prefer an admin reach you that way.
+            </Text>
             <PrimaryButton busy={requestBusy} onPress={() => void handleAccessRequest()}>
               Submit Request
             </PrimaryButton>
@@ -253,5 +264,10 @@ const styles = StyleSheet.create({
   error: {
     fontFamily: Fonts.sans,
     fontSize: 14,
+  },
+  helper: {
+    fontFamily: Fonts.sans,
+    fontSize: 13,
+    lineHeight: 18,
   },
 });
