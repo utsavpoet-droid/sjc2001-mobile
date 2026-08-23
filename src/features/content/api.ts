@@ -272,8 +272,41 @@ export async function postPollVote(accessToken: string, pollId: number, optionId
   });
 }
 
+export type SilverJubileePhoto = {
+  id: number;
+  photoUrl: string;
+  caption: string | null;
+  sortOrder: number;
+};
+
+export type SilverJubileeScheduleItem = {
+  id: number;
+  date: string | null;
+  time: string;
+  startMinutes: number | null;
+  title: string;
+  description: string | null;
+  location: string | null;
+  dressCode: string | null;
+  instructions: string | null;
+  sortOrder: number;
+  photos: SilverJubileePhoto[];
+  /** Backend flag: true when there are instructions and/or photos to show. */
+  hasDetails: boolean;
+};
+
+/**
+ * The backend returns the schedule already in chronological order (day, then
+ * time of day) — the ordering rules live there so web and app can't drift.
+ */
 export async function getSilverJubileeSchedule() {
-  return requestContentJson<unknown[]>(API_SILVER_JUBILEE, { method: 'GET' });
+  return requestContentJson<SilverJubileeScheduleItem[]>(API_SILVER_JUBILEE, { method: 'GET' });
+}
+
+export async function getSilverJubileeScheduleItem(id: number) {
+  return requestContentJson<SilverJubileeScheduleItem>(`${API_SILVER_JUBILEE}/${id}`, {
+    method: 'GET',
+  });
 }
 
 export type StoryImageUploadPayload = {

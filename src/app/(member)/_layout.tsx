@@ -38,6 +38,7 @@ export default function MemberLayout() {
       <Stack.Screen name="activity/index" />
       <Stack.Screen name="polls/index" />
       <Stack.Screen name="silver-jubilee/index" />
+      <Stack.Screen name="silver-jubilee/[id]" />
       <Stack.Screen name="news/[id]" />
     </Stack>
   );
